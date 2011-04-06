@@ -215,7 +215,7 @@ class OracleAdapter extends DatabaseAdapter {
     }  
 
   override def writeSelectElementAlias(se: SelectElement, sw: StatementWriter) =
-    sw.write(shrinkTo30AndPreserveUniquenessInScope(se.alias, sw.scope))
+    sw.write(shrinkTo30AndPreserveUniquenessInScope(se.aliasSegment, sw.scope))
 
   override def foreignKeyConstraintName(foreignKeyTable: Table[_], idWithinSchema: Int) = {
     val name = super.foreignKeyConstraintName(foreignKeyTable, idWithinSchema)
@@ -228,7 +228,17 @@ class OracleAdapter extends DatabaseAdapter {
     left.write(sw)
     sw.write(",?)")
     sw.addParam(pattern)
-  }  
+  }
+
+  override def fieldAlias(n: QueryableExpressionNode, fse: FieldSelectElement) =
+    "f" + fse.uniqueId.get
+
+  override def aliasExport(parentOfTarget: QueryableExpressionNode, target: SelectElement) =
+    //parentOfTarget.alias + "_" + target.aliasSegment
+    "f" + target.actualSelectElement.id
+
+  override def viewAlias(vn: ViewExpressionNode[_]) =
+    "t" + vn.uniqueId.get
 }
 
 

@@ -76,7 +76,7 @@ class CourseAssignment(var courseId: Int, var professorId: Long)
 class Address(var streetName: String, var numberz:Int, var numberSuffix:Option[String], var appNumber: Option[Int], var appNumberSuffix: Option[String])
   extends SchoolDbObject {
 
-  def this() = this(null,0, Some(""),Some(0), Some(""))
+  //def this() = this(null,0, Some(""),Some(0), Some(""))
 
   override def toString = "rue " + streetName 
 }
@@ -84,12 +84,12 @@ class Address(var streetName: String, var numberz:Int, var numberSuffix:Option[S
 class Professor(var lastName: String, var yearlySalary: Float, var weight: Option[Float], var yearlySalaryBD: BigDecimal, var weightInBD: Option[BigDecimal]) extends KeyedEntity[Long] {
 
   var id: Long = 0
-  def this() = this("", 0.0F, Some(0.0F), 80.0F, Some(0))
+  //def this() = this("", 0.0F, Some(0.0F), 80.0F, Some(0))
   override def toString = "Professor:" + id + ",sal=" + yearlySalary
 }
 
 
-class School(val addressId: Int, val name: String) extends KeyedEntity[Long] {
+class School(val addressId: Int, val name: String, val parentSchoolId: Long) extends KeyedEntity[Long] {
   var id: Long = 0
 }
 
@@ -141,7 +141,7 @@ class SchoolDb extends Schema {
   
   val students = table[Student]
   
-  val addresses = table[Address]
+  val addresses = table[Address]("AddressexageratelyLongName")
 
   val courses = table[Course]
 
@@ -151,12 +151,18 @@ class SchoolDb extends Schema {
 
   val schools = versionedTable[School, SchoolVersion]
 
-  val transactions = transactionTable[Transaction](() => new Transaction(0l, new Date, "testuser"))
+  val transactions = transactionTable[Transaction](() => new Transaction(0l, new Date, "testuser"))  
+  
+// uncomment to test : when http://www.assembla.com/spaces/squeryl/tickets/14-assertion-fails-on-self-referring-onetomanyrelationship
+//  an unverted constraint gets created, unless expr. is inverted : child.parentSchoolId === parent.id
+//  val schoolHierarchy =
+//    oneToManyRelation(schools, schools).via((parent, child) => parent.id === child.parentSchoolId)
 
   on(schools)(s => declare(
     s.name is(indexed("uniqueIndexName"), unique),
     s.name defaultsTo("no name"),
-    columns(s.name, s.addressId) are(indexed)
+    columns(s.name, s.addressId) are(indexed),
+    s.parentSchoolId is(indexed, unique)
     //_.addressId is(autoIncremented) currently only supported on KeyedEntity.id ... ! :(
   ))
 
@@ -284,8 +290,13 @@ class SchoolDbTestRun extends QueryTester {
 
   def test1 = {
 
+    testDeepNest1
+    
+    testDeepNest2
+
     testBoolean2LogicalBooleanConversion
     
+
     if(!Session.currentSession.databaseAdapter.isInstanceOf[MySQLAdapter])
       testPartialUpdateWithInclusionOperator
     
@@ -367,9 +378,41 @@ class SchoolDbTestRun extends QueryTester {
     
     testUpdateSetAll
 
-    testVersions
+    testVersions    
+    
+    testExists
+    testNotExists
+    testVeryNestedExists
 
     drop
+  }
+
+  def testDeepNest1 = {
+    import testInstance._
+
+    val q = from(professors)(p0 => select(p0))
+
+    val q1 = from(q)(p => where(p.lastName === tournesol.lastName) select(p))
+
+    val profTournesol = q1.single
+
+    assertEquals(tournesol.id, profTournesol.id, 'testDeepNest)
+
+    passed('testDeepNest)
+  }
+  
+  def testDeepNest2 = {
+    import testInstance._
+
+    val q = from(from(from(professors)(p0 => select(p0)))(p1 => select(p1)))(p2 => select(p2))
+
+    val q1 = from(q)(p => where(p.lastName === tournesol.lastName) select(p))
+
+    val profTournesol = q1.single
+
+    assertEquals(tournesol.id, profTournesol.id, 'testDeepNest)
+
+    passed('testDeepNest)
   }
 
   def testOptionStringInWhereClause = {
@@ -1012,7 +1055,7 @@ class SchoolDbTestRun extends QueryTester {
     //The query here doesn't make much sense, we just test that valid SQL gets generated :
     val q =
       from(professors)(p=>
-        groupBy(p.id)
+        groupBy(p.id, p.yearlySalary)
         having(p.yearlySalary gt 75.0F)
       ).toList
 
@@ -1363,6 +1406,81 @@ class SchoolDbTestRun extends QueryTester {
 
     println('testNewOuterJoin3 + " passed.")
   }
+
+  def testExists {
+    val studentsWithAnAddress =
+      from(students)(s =>
+        where(exists(from(addresses)((a) => where(s.addressId === a.id) select(a.id))))
+          select(s)
+      )
+
+    val res = for (s <- studentsWithAnAddress) yield s.name
+    val expected = List("Xiao", "Georgi", "Pratap", "Gontran")
+
+    assert(expected == res, "expected :\n " + expected + "\ngot : \n " + res)
+
+    passed('testExists)
+  }
+
+  def testNotExists {
+    val studentsWithNoAddress =
+      from(students)(s =>
+        where(notExists(from(addresses)((a) => where(s.addressId === a.id) select(a.id))))
+        select(s)
+      )
+    val res = for (s <- studentsWithNoAddress) yield s.name
+    val expected = List("Gaitan")
+
+    assert(expected == res, "expected :\n " + expected + "\ngot : \n " + res)
+
+    passed('testNotExists)
+  }
+
+  def testVeryNestedExists {
+    val qStudents = from(students) ((s) => select(s))
+    val qStudentsFromStudents = from(qStudents) ((s) => select(s))
+    val studentsWithAnAddress =
+      from(qStudentsFromStudents)(s =>
+        where(exists(from(addresses)((a) =>
+          where(s.addressId === a.id)
+          select(a))))
+        select(s))
+
+    val res = for (s <- studentsWithAnAddress) yield s.name
+    val expected = List("Xiao", "Georgi", "Pratap", "Gontran")
+
+    assert(expected == res, "expected :\n " + expected + "\ngot : \n " + res)
+
+    passed('testVeryNestedExists)
+
+  }
+
+  def testVeryVeryNestedExists {
+    // XXX This doesn't work s.addressId in s.addressId === a2.id is created
+    // as a direct ieldSelectElement, not ExportedSelectElement (however note that
+    // s.addressId in where(s.addressId in ... is created correctly (and then correctly
+    // resolved as an outer reference)
+    val qStudents = from(students) ((s) => select(s))
+    val qStudentsFromStudents = from(qStudents) ((s) => select(s))
+    val studentsWithAnAddress =
+      from(qStudentsFromStudents)(s =>
+        where(exists(from(addresses)((a) =>
+            where(s.addressId in
+              (from(addresses) ( (a2) =>
+                where(a2.id === a.id and s.addressId === a2.id)
+                select(a2.id))))
+            select(a.id))))
+          select(s)
+      )
+
+    val res = for (s <- studentsWithAnAddress) yield s.name
+    val expected = List("Xiao", "Georgi", "Pratap", "Gontran")
+
+    assert(expected == res, "expected :\n " + expected + "\ngot : \n " + res)
+
+    passed('testVeryVeryNestedExists)
+
+  }
   
   def testUpdateSetAll {
     import testInstance._
@@ -1377,7 +1495,7 @@ class SchoolDbTestRun extends QueryTester {
   def testVersions {
 
     println("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*= MY TESTS *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
-    val s = schools.insert(new School(1, "My new school"))
+    val s = schools.insert(new School(1, "My new school", 0))
     val v = from(schools.history)(h => where(h.id == s.id) select(h)).toList
     println("History of school: " + v)
     assert(v.size == 1, "We should have one version of school, but got: " + v.size)
@@ -1387,7 +1505,7 @@ class SchoolDbTestRun extends QueryTester {
     val t = from(transactions)(t => where(t.id == stid) select(t)).toList
     println("Transaction: " + t)
 
-    val ss = new School(1, "My very new School")
+    val ss = new School(1, "My very new School", 0)
     ss.id = s.id
     schools.update(ss)
     val vv = from(schools.history)(h => where(h.id == s.id) select(h)).toList

@@ -245,11 +245,6 @@ class MusicDbTestRun extends QueryTester {
       orderBy(cd.title)
     )
 
-  def songCountPerAlbumIdJoinedWithAlbumNested_I =
-    from(songCountPerAlbumIdJoinedWithAlbum)(q =>
-      select(q)
-      orderBy(q._1)
-    )
 
   def songCountPerAlbumIdJoinedWithAlbumNested =
     from(songCountPerAlbumIdJoinedWithAlbumZ)(q =>
@@ -431,8 +426,16 @@ class MusicDbTestRun extends QueryTester {
     validateScalarQueryConversion1
 
     testUpdate1
+
+    exerciseASTRenderingOfExportSelectElements
   }
 
+
+  def exerciseASTRenderingOfExportSelectElements = {
+    val nestedCountCDs = from(from(countCds(cds))(m => select(m)))(m => select(m))
+
+    validateQuery('countCds, nestedCountCDs, (m:Measures[Long]) => m.measures, List(2))
+  }
 
   implicit def sExpr[E <% StringExpression[_]](s: E) = new RegexCall(s)
 
@@ -650,8 +653,7 @@ class MusicDbTestRun extends QueryTester {
   }
 
   def validateScalarQueryConversion1 = {
-    //val q:Query[Measures[Double]] = avgSongCountForAllArtists
-    //q.dumpAst
+    
     val d:Option[Double] = avgSongCountForAllArtists
     //println("d=" + d)
     assert(d.get == 1.0, "expected " + 1.0 +"got "  +d)

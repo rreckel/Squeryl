@@ -16,7 +16,8 @@
 package org.squeryl.adapters
 
 import org.squeryl.dsl.ast.FunctionNode
-import java.sql.{SQLException}
+import java.sql.{ResultSet, SQLException}
+import java.util.UUID
 import org.squeryl.internals.{StatementWriter, DatabaseAdapter}
 import org.squeryl.{Session, Table}
 
@@ -31,6 +32,10 @@ class PostgreSqlAdapter extends DatabaseAdapter {
   override def bigDecimalTypeDeclaration = "numeric"
   override def bigDecimalTypeDeclaration(precision:Int, scale:Int) = "numeric(" + precision + "," + scale + ")"
   override def binaryTypeDeclaration = "bytea"
+  override def uuidTypeDeclaration = "uuid"
+
+  override def foreignKeyConstraintName(foreignKeyTable: Table[_], idWithinSchema: Int) =
+    foreignKeyTable.name + "FK" + idWithinSchema
 
   override def postCreateTable(t: Table[_], printSinkWhenWriteOnlyMode: Option[String => Unit]) = {
 
@@ -99,4 +104,7 @@ class PostgreSqlAdapter extends DatabaseAdapter {
   }
 
   override def quoteIdentifier(s: String) = List("\"", s.replace("\"", "\"\""), "\"").mkString
+
+  override def convertFromUuidForJdbc(u: UUID): AnyRef = u
+  override def convertToUuidForJdbc(rs: ResultSet, i: Int): UUID = rs.getObject(i).asInstanceOf[UUID]
 }

@@ -139,6 +139,9 @@ class BinaryOperatorNodeLogicalBoolean(left: ExpressionNode, right: ExpressionNo
   }
 }
 
+class ExistsExpression(val ast: ExpressionNode, val opType: String)
+  extends PrefixOperatorNode(ast, opType, false) with LogicalBoolean with NestedExpression
+
 class BetweenExpression(first: ExpressionNode, second: ExpressionNode, third: ExpressionNode)
   extends TernaryOperatorNode(first, second, third, "between") with LogicalBoolean {
 
@@ -271,7 +274,7 @@ trait TypedExpressionNode[T] extends ExpressionNode {
 
     val fmd =
       try {
-        ser.selectElement.asInstanceOf[FieldSelectElement].fieldMataData
+        ser.selectElement.asInstanceOf[FieldSelectElement].fieldMetaData
       }
       catch { // TODO: validate this at compile time with a scalac plugin
         case e:ClassCastException => {
@@ -405,6 +408,26 @@ class BinaryOperatorNode
       sw.nextLine
     sw.write(" ")
     right.write(sw)
+    sw.write(")")
+  }
+}
+
+class PrefixOperatorNode
+ (val child: ExpressionNode, val operatorToken: String, val newLineAfterOperator: Boolean = false)
+  extends ExpressionNode {
+
+  override def children = List(child)
+
+  override def inhibited = child.inhibited
+
+  override def toString = 'PrefixOperatorNode + ":" + operatorToken + inhibitedFlagForAstDump
+
+  override def doWrite(sw: StatementWriter) = {
+    sw.write("(")
+    sw.write(operatorToken)
+    if(newLineAfterOperator)
+      sw.nextLine
+    child.write(sw)
     sw.write(")")
   }
 }
@@ -548,9 +571,12 @@ class DummyExpressionHolder(val renderedExpression: String) extends ExpressionNo
     sw.write(renderedExpression)
 }
 
-class RightHandSideOfIn[A](val ast: ExpressionNode, val isIn: Option[Boolean] = None) extends ExpressionNode {
+class RightHandSideOfIn[A](val ast: ExpressionNode, val isIn: Option[Boolean] = None)
+    extends ExpressionNode with NestedExpression {
   def toIn = new RightHandSideOfIn[A](ast, Some(true))
   def toNotIn = new RightHandSideOfIn[A](ast, Some(false))
+
+  override def children = List(ast)
 
   override def inhibited =
     if(isConstantEmptyList) // not in Empty is always true, so we remove the condition
@@ -567,6 +593,24 @@ class RightHandSideOfIn[A](val ast: ExpressionNode, val isIn: Option[Boolean] = 
   override def doWrite(sw: StatementWriter) =
     if(isConstantEmptyList && isIn.get)
       sw.write("1 = 0") // in Empty is always false
-    else
+    else {
       ast.doWrite(sw)
+    }
+}
+
+trait NestedExpression {
+  self: ExpressionNode =>
+
+  private [squeryl] def propagateOuterScope(query:QueryExpressionNode[_]) {
+    visitDescendants( (node, parent, depth) =>
+      node match {
+        case e:ExportedSelectElement if e.needsOuterScope => e.outerScopes = query :: e.outerScopes
+        case s:SelectElementReference[_] => s.delegateAtUseSite match {
+          case e:ExportedSelectElement if e.needsOuterScope => e.outerScopes = query :: e.outerScopes
+          case _ =>
+        }
+        case _ =>
+      }
+    )
+  }
 }

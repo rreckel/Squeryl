@@ -20,6 +20,7 @@ import org.squeryl._
 import dsl.CompositeKey
 import org.squeryl.{Schema, Session, Table}
 import java.sql._
+import java.util.UUID
 
 trait DatabaseAdapter {
 
@@ -214,7 +215,8 @@ trait DatabaseAdapter {
   def bigDecimalTypeDeclaration(precision:Int, scale:Int) = "decimal(" + precision + "," + scale + ")"
   def timestampTypeDeclaration = "timestamp"
   def binaryTypeDeclaration = "binary"
-  
+  def uuidTypeDeclaration = "char(36)"
+
   private val _declarationHandler = new FieldTypeHandler[String] {
 
     def handleIntType = intTypeDeclaration
@@ -228,6 +230,7 @@ trait DatabaseAdapter {
     def handleBigDecimalType(fmd: Option[FieldMetaData]) = bigDecimalTypeDeclaration(fmd.get.length, fmd.get.scale)
     def handleTimestampType = timestampTypeDeclaration
     def handleBinaryType = binaryTypeDeclaration
+    def handleUuidType = uuidTypeDeclaration
     def handleEnumerationValueType = intTypeDeclaration
     def handleUnknownType(c: Class[_]) =
       error("don't know how to map field type " + c.getName)
@@ -429,7 +432,8 @@ trait DatabaseAdapter {
        v = v.asInstanceOf[scala.math.BigDecimal].bigDecimal
     else if(v.isInstanceOf[scala.Enumeration#Value])
        v = v.asInstanceOf[scala.Enumeration#Value].id.asInstanceOf[AnyRef]
-
+    else if(v.isInstanceOf[java.util.UUID])
+       v = convertFromUuidForJdbc(v.asInstanceOf[UUID])
     v
   }
 
@@ -554,6 +558,11 @@ trait DatabaseAdapter {
    */
   def convertToBooleanForJdbc(rs: ResultSet, i:Int): Boolean = rs.getBoolean(i)
 
+  def convertFromUuidForJdbc(u: UUID): AnyRef =
+    u.toString
+
+  def convertToUuidForJdbc(rs: ResultSet, i:Int): UUID =
+    UUID.fromString(rs.getString(i))
 
   def writeUpdate(t: Table[_], us: UpdateStatement, sw : StatementWriter) = {
 
@@ -593,9 +602,8 @@ trait DatabaseAdapter {
       sw.nextLine
       sw.write("Where")
       sw.nextLine
-      val whereClauseClosure = us.whereClause.get
       sw.writeIndented {
-        whereClauseClosure().write(sw)
+        us.whereClause.get.write(sw)
       }
     }
   }
@@ -622,7 +630,13 @@ trait DatabaseAdapter {
     foreignKeyConstraintName(foreingKeyTable, idWithinSchema)
 
   def foreignKeyConstraintName(foreignKeyTable: Table[_], idWithinSchema: Int) =
-    foreignKeyTable.prefixedName + "FK" + idWithinSchema
+    foreignKeyTable.name + "FK" + idWithinSchema
+
+  def viewAlias(vn: ViewExpressionNode[_]) =
+     if(vn.view.prefix != None)
+       vn.view.prefix.get + "_" + vn.view.name + vn.uniqueId.get
+     else
+       vn.view.name + vn.uniqueId.get
 
   @deprecated("Use writeForeignKeyDeclaration instead")
   def writeForeingKeyDeclaration(
@@ -692,9 +706,6 @@ trait DatabaseAdapter {
 
   def dropTable(t: Table[_]) =
     execFailSafeExecute(writeDropTable(t.prefixedName), e=> isTableDoesNotExistException(e))
-
-  def writeSelectElementAlias(se: SelectElement, sw: StatementWriter) =
-    sw.write(quoteName(se.alias))
 
   def writeUniquenessConstraint(t: Table[_], cols: Iterable[FieldMetaData]) = {
     //ALTER TABLE TEST ADD CONSTRAINT NAME_UNIQUE UNIQUE(NAME)
@@ -775,4 +786,18 @@ trait DatabaseAdapter {
   def quoteIdentifier(s: String) = s
 
   def quoteName(s: String) = s.split('.').map(quoteIdentifier(_)).mkString(".")
+
+  def fieldAlias(n: QueryableExpressionNode, fse: FieldSelectElement) =
+    n.alias + "_" + fse.fieldMetaData.columnName
+
+  def aliasExport(parentOfTarget: QueryableExpressionNode, target: SelectElement) =
+    parentOfTarget.alias + "_" + target.aliasSegment
+
+  def writeSelectElementAlias(se: SelectElement, sw: StatementWriter) = {
+    val a = se.aliasSegment
+//    if(a.length > 30)
+//      error("Oracle Bust : " + a)
+    sw.write(quoteName(a))
+  }
+
 }

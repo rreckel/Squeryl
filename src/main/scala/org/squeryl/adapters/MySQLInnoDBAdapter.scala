@@ -13,23 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ***************************************************************************** */
-package org.squeryl.dsl.ast
+package org.squeryl.adapters
 
-import org.squeryl.internals.StatementWriter
-
-class UpdateStatement(_whereClause: Option[()=>LogicalBoolean], uas: Seq[UpdateAssignment])
-   extends ExpressionNode {
-
-  val whereClause: Option[LogicalBoolean] =
-    _whereClause.map(_.apply)
-
-  override def children = whereClause.toList
-
-  def doWrite(sw: StatementWriter) = {}
-
-  def columns =
-    uas.map(ua => ua.left)
-
-  def values =
-    uas.map(ua => ua.right)
+/**
+*   Since MySQL 5.5 InnoDB has replaced MyISAM as the default storage engine.
+*   Thus, to take full advantage of the database abilities, new MySQL installs
+*   should use this Adapter. 
+*   see: http://dev.mysql.com/doc/refman/5.5/en/innodb-default-se.html
+*/
+class MySQLInnoDBAdapter extends MySQLAdapter {
+    
+    /**
+    *   InnoDB MySQL tables support foreign key constraints,
+    *   see http://dev.mysql.com/doc/refman/5.5/en/innodb-foreign-key-constraints.html
+    */
+    override def supportsForeignKeyConstraints = true
+    
 }
