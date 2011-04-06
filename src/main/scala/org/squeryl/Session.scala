@@ -64,6 +64,8 @@ class Session(val connection: Connection, val databaseAdapter: DatabaseAdapter, 
     cleanup
     connection.close
   }
+
+  var transactionId: Option[Long] = None
 }
 
 trait SessionFactory {
@@ -92,7 +94,7 @@ object SessionFactory {
         error("org.squeryl.SessionFactory not initialized, SessionFactory.concreteFactory must be assigned a \n"+
               "function for creating new org.squeryl.Session, before transaction can be used.\n" +
               "Alternatively SessionFactory.externalTransactionManagementAdapter can initialized, please refer to the documentation.")
-      ).apply        
+      ).apply
 }
 
 object Session {

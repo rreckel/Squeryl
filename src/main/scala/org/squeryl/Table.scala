@@ -248,7 +248,54 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
   }
 }
 
-class VersionedTable[A,B](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val history: Table[B])
+class TransactionTable[A <: KeyedEntity[Long]](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val builder: () => A)
+  extends Table[A](n,c,schema, _prefix) {
+}
+
+class VersionedTable[A,B <: Versioned](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val history: Table[B])
   extends Table[A](n,c,schema, _prefix) {
 
+  override def insert(t: A): A = {
+    super.insert(t)
+    history.insert(createVersion(t, HistoryEventType.Created))
+    t
+  }
+
+  override def insert(e: Iterable[A]):Unit = {
+    super.insert(e)
+    val versions = e.map(a => createVersion(a, HistoryEventType.Created))
+    history.insert(versions)
+  }
+
+  override def update(o: A)(implicit ev: <:<[A, KeyedEntity[_]]) {
+    super.update(o)
+    history.insert(createVersion(o, HistoryEventType.Updated))
+  }
+
+  private def createVersion(a: A, historyEventType: HistoryEventType.Value):B = {
+    val copy = history._createInstanceOfRowObject.asInstanceOf[B]
+    val fmds = history.posoMetaData.fieldsMetaData.map(fmd => Pair(fmd, posoMetaData.fieldsMetaData.find(_.nameOfProperty == fmd.nameOfProperty)))
+    fmds.foreach({case(hfmd, fmd) => (fmd.foreach(f => hfmd.set(copy, f.get(a.asInstanceOf[AnyRef]))))})
+
+    val tid = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == "transactionId")
+    tid.foreach(_.set(copy, new java.lang.Long(transactionId)))
+
+    val het = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == "historyEventType")
+    het.foreach(_.set(copy, new Integer(historyEventType.id)))
+    copy
+  }
+
+  private def transactionId = {
+    schema.findTransactionTable match {
+      case Some(t:TransactionTable[_]) => Session.currentSession.transactionId match {
+        case Some(id) => id
+        case _ => {
+            val tid = t.insert(t.builder())
+            Session.currentSession.transactionId = Some(tid.id)
+            tid.id
+          }
+        }
+      case _ => 0l
+    }
+  }
 }

@@ -152,7 +152,7 @@ object HistoryEventType extends Enumeration {
  * Version tables must mix in this trait
  */
 trait Versioned {
-  val transactionId: Long = 0
-  val historyEventType: HistoryEventType.Value
-  val versionNumber: Int = 0
+  def transactionId: Long
+  def historyEventType: HistoryEventType.Value
+  def versionNumber: Int
 }
