@@ -65,7 +65,7 @@ class Session(val connection: Connection, val databaseAdapter: DatabaseAdapter, 
     connection.close
   }
 
-  var transactionId: Option[Long] = None
+  var transactionId: Option[_] = None
 }
 
 trait SessionFactory {

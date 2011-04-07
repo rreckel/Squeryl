@@ -521,11 +521,6 @@ trait Schema {
     tableA
   }
 
-  def findTransactionTable = _tables.find(_.isInstanceOf[TransactionTable[_]])
-
-  def transactionTable[A <: KeyedEntity[Long]](builder: () => A)(implicit mA: Manifest[A]) = {
-    val t = new TransactionTable[A](tableNameFromClass(mA.erasure), mA.erasure.asInstanceOf[Class[A]], this, None, builder)
-    _addTable(t)
-    t
-  }
+  def transactionTable[A <: KeyedEntity[Long]]: Option[Table[A]] = None
+//  def transactionTable: Option[Table[_]] = None
 }

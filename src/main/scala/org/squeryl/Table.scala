@@ -21,6 +21,7 @@ import internals.{FieldMetaData, NoOpOutMapper, FieldReferenceLinker, StatementW
 import java.sql.{Statement}
 import logging.StackMarker
 import scala.reflect.Manifest
+import java.util.UUID
 
 private [squeryl] object DummySchema extends Schema
 
@@ -249,10 +250,6 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
   }
 }
 
-class TransactionTable[A <: KeyedEntity[Long]](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val builder: () => A)
-  extends Table[A](n,c,schema, _prefix) {
-}
-
 class VersionedTable[A,B <: Versioned](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val history: Table[B])
   extends Table[A](n,c,schema, _prefix) {
 
@@ -273,30 +270,40 @@ class VersionedTable[A,B <: Versioned](n: String, c: Class[A], schema: Schema, _
     history.insert(createVersion(o, HistoryEventType.Updated))
   }
 
+  override def delete(q: Query[A]): Int = {
+
+    val deleted = q.toList
+    deleted.foreach(e => history.insert(createVersion(e, HistoryEventType.Deleted)))
+
+    super.delete(q)
+  }
+
   private def createVersion(a: A, historyEventType: HistoryEventType.Value):B = {
     val copy = history._createInstanceOfRowObject.asInstanceOf[B]
     val fmds = history.posoMetaData.fieldsMetaData.map(fmd => Pair(fmd, posoMetaData.fieldsMetaData.find(_.nameOfProperty == fmd.nameOfProperty)))
     fmds.foreach({case(hfmd, fmd) => (fmd.foreach(f => hfmd.set(copy, f.get(a.asInstanceOf[AnyRef]))))})
 
     val tid = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == "transactionId")
-    tid.foreach(_.set(copy, new java.lang.Long(transactionId)))
+    tid.foreach(_.set(copy, transactionId.asInstanceOf[AnyRef]))
 
     val het = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == "historyEventType")
     het.foreach(_.set(copy, new Integer(historyEventType.id)))
     copy
   }
 
-  private def transactionId = {
-    schema.findTransactionTable match {
-      case Some(t:TransactionTable[_]) => Session.currentSession.transactionId match {
-        case Some(id) => id
-        case _ => {
-            val tid = t.insert(t.builder())
-            Session.currentSession.transactionId = Some(tid.id)
-            tid.id
-          }
+  private def transactionId[T,K]()(implicit ev: T <:< KeyedEntity[K]) = {
+    Session.currentSession.transactionId match {
+      case Some(id) => id  // return the id if it was already created
+      case _ => schema.transactionTable match {
+        case Some(t: Table[T]) => {         // If there is a transaction table, we create a new Transaction and return it's key
+          val tid:T = t.insert(t._createInstanceOfRowObject.asInstanceOf[T])
+          Session.currentSession.transactionId = Some(tid.id)
+          tid.id
         }
-      case _ => 0l
+        case _ => {   // If there is no transaction table we create a new transaction key. We assume a UUID will do it
+          UUID.randomUUID
+        }
+      }
     }
   }
 }

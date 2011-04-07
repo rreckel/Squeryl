@@ -97,7 +97,9 @@ case class SchoolVersion(id: Long, adressId: Int, name: String, transactionId: L
   def this() = this(0l, 0, "", 0l, HistoryEventType.Created, 0)
 }
 
-case class Transaction(id: Long, date: Date, user: String) extends KeyedEntity[Long]
+case class Transaction(id: Long, date: Date, user: String) extends KeyedEntity[Long] {
+  def this() = this(0l, new Date, "testuser")
+}
 
 object SDB extends SchoolDb
 
@@ -151,8 +153,9 @@ class SchoolDb extends Schema {
 
   val schools = versionedTable[School, SchoolVersion]
 
-  val transactions = transactionTable[Transaction](() => new Transaction(0l, new Date, "testuser"))  
-  
+  val transactions = table[Transaction]
+  override def transactionTable[A <: KeyedEntity[Long]]: Option[Table[A]] = Some(transactions.asInstanceOf[Table[A]])
+
 // uncomment to test : when http://www.assembla.com/spaces/squeryl/tickets/14-assertion-fails-on-self-referring-onetomanyrelationship
 //  an unverted constraint gets created, unless expr. is inverted : child.parentSchoolId === parent.id
 //  val schoolHierarchy =
