@@ -4,22 +4,7 @@
     <facet type="scala" name="Scala">
       <configuration>
         <option name="compilerLibraryLevel" value="Global" />
-        <option name="compilerLibraryName" value="Scala2.8.1" />
-      </configuration>
-    </facet>
-    <facet type="Scala" name="Scala">
-      <configuration>
-        <option name="takeFromSettings" value="true" />
-        <option name="myScalaCompilerJarPaths">
-          <array>
-            <option value="$MODULE_DIR$/../../project/boot/scala-2.8.1/lib/scala-compiler.jar" />
-          </array>
-        </option>
-        <option name="myScalaSdkJarPaths">
-          <array>
-            <option value="$MODULE_DIR$/../../project/boot/scala-2.8.1/lib/scala-library.jar" />
-          </array>
-        </option>
+        <option name="compilerLibraryName" value="Scala2.9.0-1" />
       </configuration>
     </facet>
   </component>
@@ -34,26 +19,70 @@
     <orderEntry type="module-library">
       <library>
         <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/scalatest_2.9.0-1.4.1.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/derby-10.7.1.1.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/h2-1.2.127.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/jtds-1.2.4.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/postgresql-8.4-701.jdbc4.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/junit-4.8.2.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.9.0-1/provided/mysql-connector-java-5.1.10.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
           <root url="jar://$MODULE_DIR$/../../lib/ojdbc14.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library">
-      <library>
-        <CLASSES>
-          <root url="file://$MODULE_DIR$/../../lib_managed/scala_2.8.1/provided" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-        <jarDirectory url="file://$MODULE_DIR$/../../lib_managed/scala_2.8.1/provided" recursive="false" />
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library">
-      <library>
-        <CLASSES>
-          <root url="jar://$MODULE_DIR$/../../lib_managed/scala_2.8.1/provided/specs_2.8.0-1.6.5.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />

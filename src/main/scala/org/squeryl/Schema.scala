@@ -21,11 +21,10 @@ import ast._
 import internals._
 import reflect.{Manifest}
 import java.sql.SQLException
-import collection.mutable.{HashSet, ArrayBuffer}
 import java.io.PrintWriter
+import collection.mutable.{HashMap, HashSet, ArrayBuffer}
 
-
-trait Schema {
+trait Schema extends DelayedInit {
 
   protected implicit def thisSchema = this
 
@@ -82,8 +81,8 @@ trait Schema {
     val c = a.asInstanceOf[AnyRef].getClass
     _tables.filter(_.posoMetaData.clasz == c).asInstanceOf[Iterable[Table[A]]]
   }
-  
-  private def findAllTablesFor[A](c: Class[A]) =
+
+  private [squeryl] def findAllTablesFor[A](c: Class[A]) =
     _tables.filter(t => c.isAssignableFrom(t.posoMetaData.clasz)).asInstanceOf[Traversable[Table[_]]]
 
 
@@ -161,7 +160,7 @@ trait Schema {
    * database instances, the method is protected in order to make it a little
    * less 'accessible'
    */
-  protected def drop: Unit = {
+  def drop: Unit = {
 
     if(_dbAdapter.supportsForeignKeyConstraints)
       _dropForeignKeyConstraints
@@ -430,7 +429,7 @@ trait Schema {
       case dva:DefaultValueAssignment    => {
 
         if(! dva.value.isInstanceOf[ConstantExpressionNode[_]])
-          error("error in declaration of column "+ table.prefixedName + "." + dva.left.nameOfProperty + ", " + 
+          error("error in declaration of column "+ table.prefixedName + "." + dva.left.nameOfProperty + ", " +
                 "only constant expressions are supported in 'defaultsTo' declaration")
 
         dva.left._defaultValue = Some(dva.value.asInstanceOf[ConstantExpressionNode[_]])
@@ -472,7 +471,7 @@ trait Schema {
       case caa:ColumnAttributeAssignment => {
         for(ca <- caa.columnAttributes if ca.isInstanceOf[AutoIncremented] && !(caa.left.isIdFieldOfKeyedEntity))
           error("Field " + caa.left.nameOfProperty + " of table " + table.name +
-                " is declared as autoIncrementeded, auto increment is currently only supported on KeyedEntity[A].id")
+                " is declared as autoIncremented, auto increment is currently only supported on KeyedEntity[A].id")
       }
       case dva:Any => {}
     }
@@ -509,7 +508,64 @@ trait Schema {
 
   def columns(fieldList: TypedExpressionNode[_]*) = new ColGroupDeclaration(fieldList.map(_._fieldMetaData))
 
+  // POSO Life Cycle Callbacks :
 
+  def callbacks: Seq[LifecycleEvent] = Nil
+
+  def delayedInit(body: => Unit) = {
+
+    body
+
+    (for(cb <- callbacks; t <- cb.target) yield (t, cb))
+    .groupBy(_._1)
+    .mapValues(_.map(_._2))
+    .foreach(
+     (t:Tuple2[View[_],Seq[LifecycleEvent]]) => {
+       t._1._callbacks = new LifecycleEventInvoker(t._2, t._1)
+     }
+    )
+  }
+
+  import internals.PosoLifecycleEvent._
+
+  protected def beforeInsert[A](t: Table[A]) =
+    new LifecycleEventPercursorTable[A](t, BeforeInsert)
+
+  protected def beforeInsert[A]()(implicit m: Manifest[A]) =
+    new LifecycleEventPercursorClass[A](m.erasure, this, BeforeInsert)
+
+  protected def beforeUpdate[A](t: Table[A]) =
+    new LifecycleEventPercursorTable[A](t, BeforeInsert)
+
+  protected def beforeUpdate[A]()(implicit m: Manifest[A]) =
+    new LifecycleEventPercursorClass[A](m.erasure, this, BeforeUpdate)
+
+  protected def beforeDelete[A](t: Table[A])(implicit ev : A <:< KeyedEntity[_]) =
+    new LifecycleEventPercursorTable[A](t, BeforeDelete)
+
+  protected def beforeDelete[K, A <: KeyedEntity[K]]()(implicit m: Manifest[A]) =
+    new LifecycleEventPercursorClass[A](m.erasure, this, BeforeDelete)
+
+  protected def afterInsert[A](t: Table[A]) =
+    new LifecycleEventPercursorTable[A](t, AfterInsert)
+
+  protected def afterInsert[A]()(implicit m: Manifest[A]) =
+    new LifecycleEventPercursorClass[A](m.erasure, this, AfterInsert)
+
+  protected def afterUpdate[A](t: Table[A]) =
+    new LifecycleEventPercursorTable[A](t, AfterUpdate)
+
+  protected def afterUpdate[A]()(implicit m: Manifest[A]) =
+    new LifecycleEventPercursorClass[A](m.erasure, this, AfterUpdate)
+
+  protected def afterDelete[A](t: Table[A]) =
+    new LifecycleEventPercursorTable[A](t, AfterDelete)
+
+  protected def afterDelete[A]()(implicit m: Manifest[A]) =
+    new LifecycleEventPercursorClass[A](m.erasure, this, AfterDelete)
+
+  protected def factoryFor[A](table: Table[A]) =
+    new PosoFactoryPercursorTable[A](table)
 
   def versionedTable[A, B <: Versioned]()(implicit mA: Manifest[A], mB: Manifest[B]) = {
 

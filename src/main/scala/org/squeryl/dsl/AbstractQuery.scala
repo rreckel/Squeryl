@@ -226,19 +226,21 @@ abstract class AbstractQuery[R](val isRoot:Boolean) extends Query[R] {
       val oqr = q.asInstanceOf[OptionalQueryable[U]]
       val sq = createSubQueryable[U](oqr.queryable)
       sq.node.inhibited = oqr.inhibited
-      new SubQueryable(q, Some(sq.sample).asInstanceOf[U], sq.resultSetMapper, sq.isQuery, sq.node)
+      val oqCopy = new OptionalQueryable(sq.queryable)
+      oqCopy.inhibited = oqr.inhibited
+      new SubQueryable(oqCopy.asInstanceOf[Queryable[U]], Some(sq.sample).asInstanceOf[U], sq.resultSetMapper, sq.isQuery, sq.node)
     }
     else if(q.isInstanceOf[OuterJoinedQueryable[U]]) {
       val ojq = q.asInstanceOf[OuterJoinedQueryable[U]]
       val sq = createSubQueryable[U](ojq.queryable)
       sq.node.joinKind = Some((ojq.leftRightOrFull, "outer"))
-      new SubQueryable(ojq.queryable, Some(sq.sample).asInstanceOf[U], sq.resultSetMapper, sq.isQuery, sq.node)
+      new SubQueryable(sq.queryable, Some(sq.sample).asInstanceOf[U], sq.resultSetMapper, sq.isQuery, sq.node)
     }
     else if(q.isInstanceOf[InnerJoinedQueryable[U]]) {
       val ijq = q.asInstanceOf[InnerJoinedQueryable[U]]
       val sq = createSubQueryable[U](ijq.queryable)
       sq.node.joinKind = Some((ijq.leftRightOrFull, "inner"))
-      new SubQueryable(ijq.queryable, sq.sample, sq.resultSetMapper, sq.isQuery, sq.node)
+      new SubQueryable(sq.queryable, sq.sample, sq.resultSetMapper, sq.isQuery, sq.node)
     }
     else if(q.isInstanceOf[DelegateQuery[U]]) {
       createSubQueryable(q.asInstanceOf[DelegateQuery[U]].q)
@@ -259,7 +261,11 @@ abstract class AbstractQuery[R](val isRoot:Boolean) extends Query[R] {
     def give(rs: ResultSet): U =
       if(node.joinKind != None) {
         if(node.isOuterJoined) {
-           if(resultSetMapper.isNoneInOuterJoin(rs))
+
+          val isNoneInOuterJoin =
+            (!isQuery) && resultSetMapper.isNoneInOuterJoin(rs)
+
+           if(isNoneInOuterJoin)
              None.asInstanceOf[U]
            else
              Some(queryable.give(resultSetMapper, rs)).asInstanceOf[U]

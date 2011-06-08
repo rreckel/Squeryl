@@ -131,8 +131,6 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
               clasz.getMethod("idField")
 
           assert(pkMethod != null, "method id or idField should exist in class " + clasz.getName)
-          assert(classOf[CompositeKey].isAssignableFrom(pkMethod.getReturnType),
-            " expected return type of CompositeKey on method " + pkMethod.getName + " in " + clasz.getName)
 
           Some(pkMethod)
         }
@@ -189,7 +187,7 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
     var res = new Array[Object](params.size)
 
     for(i <- 0 to params.length -1) {
-      val v = FieldMetaData.createDefaultValue(clasz, params(i), None, None)
+      val v = FieldMetaData.createDefaultValue(c, params(i), None, None)
       res(i) = v
     }
 
