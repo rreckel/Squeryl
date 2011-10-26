@@ -1624,7 +1624,7 @@ abstract class SchoolDbTestRun extends SchoolDbTestBase {
     println("Transaction: " + t)
 
     val ss = new School(1, "My very new School", 0)
-    ss.id = s.id
+    ss.id_field = s.id
     schools.update(ss)
     val vv = from(schools.history)(h => where(h.id == s.id) select(h)).toList
     println("History of school after update: " + vv)
