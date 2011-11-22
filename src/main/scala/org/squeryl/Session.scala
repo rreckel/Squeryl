@@ -91,7 +91,7 @@ object SessionFactory {
 
   def newSession: Session =
       concreteFactory.getOrElse(
-        error("org.squeryl.SessionFactory not initialized, SessionFactory.concreteFactory must be assigned a \n"+
+        org.squeryl.internals.Utils.throwError("org.squeryl.SessionFactory not initialized, SessionFactory.concreteFactory must be assigned a \n"+
               "function for creating new org.squeryl.Session, before transaction can be used.\n" +
               "Alternatively SessionFactory.externalTransactionManagementAdapter can initialized, please refer to the documentation.")
       ).apply
@@ -99,15 +99,23 @@ object SessionFactory {
 
 object Session {
 
-  private val _currentSessionThreadLocal = new ThreadLocal[Option[Session]] {
-    override def initialValue = None
-  }
+  /**
+   * Note about ThreadLocals: all thread locals should be .removed() before the
+   * transaction ends.
+   * 
+   * Leaving a ThreadLocal inplace after the control returns to the user thread
+   * will pollute the users threads and will cause problems for e.g. Tomcat and
+   * other servlet engines.
+   */
+  private val _currentSessionThreadLocal = new ThreadLocal[Session]
   
   def create(c: Connection, a: DatabaseAdapter) =
     new Session(c,a)  
 
-  def currentSessionOption: Option[Session] =
-    _currentSessionThreadLocal.get
+  def currentSessionOption: Option[Session] = {
+    val s = _currentSessionThreadLocal.get
+    if (s == null) None else Some(s)
+  }
 
   def currentSession: Session =
     if(SessionFactory.externalTransactionManagementAdapter != None) {
@@ -116,14 +124,19 @@ object Session {
       s
     }
     else currentSessionOption.getOrElse(
-      error("no session is bound to current thread, a session must be created via Session.create \nand bound to the thread via 'work' or 'bindToCurrentThread'"))
+      org.squeryl.internals.Utils.throwError("no session is bound to current thread, a session must be created via Session.create \nand bound to the thread via 'work' or 'bindToCurrentThread'"))
 
   def hasCurrentSession =
-    _currentSessionThreadLocal.get != None
+    currentSessionOption != None
 
   def cleanupResources =
-    if(_currentSessionThreadLocal.get != None)
-      _currentSessionThreadLocal.get.get.cleanup
+    currentSessionOption foreach (_.cleanup)
 
-  private def currentSession_=(s: Option[Session]) = _currentSessionThreadLocal.set(s)
+  private def currentSession_=(s: Option[Session]) = 
+    if (s == None) {
+      _currentSessionThreadLocal.remove()        
+    } else {
+      _currentSessionThreadLocal.set(s.get)
+    }
+  
 }

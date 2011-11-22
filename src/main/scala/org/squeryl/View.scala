@@ -28,7 +28,13 @@ class View[T] private [squeryl](_name: String, private[squeryl] val classOfT: Cl
   def this(n:String)(implicit manifestT: Manifest[T]) =
     this(n, manifestT.erasure.asInstanceOf[Class[T]], DummySchema, None)
 
-  private [squeryl] var _callbacks: PosoLifecycleEventListener = NoOpPosoLifecycleEventListener
+//2.9.x approach for LyfeCycle events :
+//  private [squeryl] var _callbacks: PosoLifecycleEventListener = NoOpPosoLifecycleEventListener
+
+////2.8.x approach for LyfeCycle events :
+  private [squeryl] lazy val _callbacks =
+    schema._callbacks.get(this).getOrElse(NoOpPosoLifecycleEventListener)
+
 
   def name = schema.tableNameFromClassName(_name)
 
@@ -106,5 +112,12 @@ class View[T] private [squeryl](_name: String, private[squeryl] val classOfT: Cl
     }
     else
       None
-  }  
+  }
+  
+  /**
+   * Will throw an exception if the given key (k) returns no row.
+   */
+  def get[K](k: K)(implicit ev: T <:< KeyedEntity[K], dsl: QueryDsl): T = 
+     lookup(k).getOrElse(Utils.throwError("Found no row with key '"+ k + "' in " + name + "."))
+  
 }

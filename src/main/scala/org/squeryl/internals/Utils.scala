@@ -21,6 +21,8 @@ import org.squeryl.Queryable
 import org.squeryl.dsl.fsm.QueryElements
 import org.squeryl.dsl.QueryYield
 import org.squeryl.dsl.ast.{QueryExpressionElements, LogicalBoolean}
+import java.lang.RuntimeException
+import java.sql.Connection
 
 object Utils {
 
@@ -52,7 +54,10 @@ object Utils {
     try {rs.close}
     catch {case e:SQLException => {}}
 
-
+  def close(c: Connection) =
+    try {c.close}
+    catch {case e:SQLException => {}}
+    
   private class DummyQueryElements[Cond](override val whereClause: Option[()=>LogicalBoolean]) extends QueryElements[Cond]
   
   
@@ -85,4 +90,18 @@ object Utils {
       new DummyQuery(q, visitor, (b0:B) =>b = Some(b0))
       b.get
     }
+
+  def throwError(msg: String): Nothing = {
+    throw new RuntimeException(msg)
+  }
+
+
+  def enumerationForValue(v: Enumeration#Value): Enumeration = {
+
+    val m = v.getClass.getField("$outer")
+
+    val enu = m.get(v).asInstanceOf[Enumeration]
+
+    enu
+  }
 }

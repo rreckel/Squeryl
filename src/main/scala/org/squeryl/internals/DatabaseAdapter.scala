@@ -61,44 +61,18 @@ trait DatabaseAdapter {
     sw.write("From")
     sw.nextLine
 
-
     if(!qen.isJoinForm) {
       sw.writeIndented {
-        qen.outerJoinExpressionsDEPRECATED match {
-          case Nil =>
-              for(z <- qen.tableExpressions.zipi) {
-                z.element.write(sw)
-                sw.write(" ")
-                sw.write(sw.quoteName(z.element.alias))
-                if(!z.isLast) {
-                  sw.write(",")
-                  sw.nextLine
-                }
-              }
-              sw.pushPendingNextLine
-          case joinExprs =>
-            for(z <- qen.tableExpressions.zipi) {
-              if(z.isFirst) {
-                z.element.write(sw)
-                sw.write(" ")
-                sw.write(sw.quoteName(z.element.alias))
-                sw.indent
-                sw.nextLine
-              } else {
-                sw.write("inner join ")
-                z.element.write(sw)
-                sw.write(" as ")
-                sw.write(sw.quoteName(z.element.alias))
-                sw.nextLine
-              }
-            }
-            for(oje <- joinExprs.zipi) {
-              writeOuterJoinDEPRECATED(oje.element, sw)
-              if(oje.isLast)
-                sw.unindent
-              sw.pushPendingNextLine
-            }
+        for(z <- qen.tableExpressions.zipi) {
+          z.element.write(sw)
+          sw.write(" ")
+          sw.write(sw.quoteName(z.element.alias))
+          if(!z.isLast) {
+            sw.write(",")
+            sw.nextLine
+          }
         }
+        sw.pushPendingNextLine
       }
     }
     else {
@@ -180,16 +154,6 @@ trait DatabaseAdapter {
       sw.write(p._1.toString)
     })
 
-  
-  def writeOuterJoinDEPRECATED(oje: OuterJoinExpression, sw: StatementWriter) = {
-    sw.write(oje.leftRightOrFull)
-    sw.write(" outer join ")
-    oje.queryableExpressionNode.write(sw)
-    sw.write(" as ")
-    sw.write(sw.quoteName(oje.queryableExpressionNode.alias))
-    sw.write(" on ")
-    oje.matchExpression.write(sw)
-  }
 
   def writeJoin(queryableExpressionNode: QueryableExpressionNode, sw: StatementWriter) = {
     sw.write(queryableExpressionNode.joinKind.get._1)
@@ -204,7 +168,7 @@ trait DatabaseAdapter {
   }
 
   def intTypeDeclaration = "int"
-  def stringTypeDeclaration = "varchar(255)"  
+  def stringTypeDeclaration = "varchar"
   def stringTypeDeclaration(length:Int) = "varchar("+length+")"
   def booleanTypeDeclaration = "boolean"
   def doubleTypeDeclaration = "double"
@@ -221,19 +185,29 @@ trait DatabaseAdapter {
 
     def handleIntType = intTypeDeclaration
     def handleStringType  = stringTypeDeclaration
-    def handleStringType(fmd: Option[FieldMetaData]) = stringTypeDeclaration(fmd.get.length)
+    def handleStringType(fmd: Option[FieldMetaData]) =
+      fmd match {
+        case Some(x) => stringTypeDeclaration(x.length)
+        case None => stringTypeDeclaration
+      }
+
     def handleBooleanType = booleanTypeDeclaration
     def handleDoubleType = doubleTypeDeclaration
     def handleDateType = dateTypeDeclaration
     def handleLongType = longTypeDeclaration
     def handleFloatType = floatTypeDeclaration
-    def handleBigDecimalType(fmd: Option[FieldMetaData]) = bigDecimalTypeDeclaration(fmd.get.length, fmd.get.scale)
+    def handleBigDecimalType(fmd: Option[FieldMetaData]) =
+      fmd match {
+        case Some(x) => bigDecimalTypeDeclaration(x.length, x.scale)
+        case None => bigDecimalTypeDeclaration
+      }
+
     def handleTimestampType = timestampTypeDeclaration
     def handleBinaryType = binaryTypeDeclaration
     def handleUuidType = uuidTypeDeclaration
     def handleEnumerationValueType = intTypeDeclaration
     def handleUnknownType(c: Class[_]) =
-      error("don't know how to map field type " + c.getName)
+      org.squeryl.internals.Utils.throwError("don't know how to map field type " + c.getName)
   }
   
   def databaseTypeFor(fmd: FieldMetaData) =
@@ -401,10 +375,12 @@ trait DatabaseAdapter {
     st.executeUpdate
   }
 
+  protected def getInsertableFields(fmd : Iterable[FieldMetaData]) = fmd.filter(fmd => !fmd.isAutoIncremented && fmd.isInsertable )
+
   def writeInsert[T](o: T, t: Table[T], sw: StatementWriter):Unit = {
 
     val o_ = o.asInstanceOf[AnyRef]    
-    val f = t.posoMetaData.fieldsMetaData.filter(fmd => !fmd.isAutoIncremented)
+    val f = getInsertableFields(t.posoMetaData.fieldsMetaData)
 
     sw.write("insert into ");
     sw.write(quoteName(t.prefixedName));
@@ -498,7 +474,7 @@ trait DatabaseAdapter {
     sw.indent
     sw.writeLinesWithSeparator(
       t.posoMetaData.fieldsMetaData.
-        filter(fmd=> ! fmd.isIdFieldOfKeyedEntity).
+        filter(fmd=> ! fmd.isIdFieldOfKeyedEntity && fmd.isUpdatable).
           map(fmd => {
             if(fmd.isOptimisticCounter)
               quoteName(fmd.columnName) + " = " + quoteName(fmd.columnName) + " + 1 "
@@ -512,7 +488,7 @@ trait DatabaseAdapter {
     sw.nextLine
     sw.indent
     
-    t.posoMetaData.primaryKey.getOrElse(error("writeUpdate was called on an object that does not extend from KeyedEntity[]")).fold(
+    t.posoMetaData.primaryKey.getOrElse(org.squeryl.internals.Utils.throwError("writeUpdate was called on an object that does not extend from KeyedEntity[]")).fold(
       pkMd => sw.write(quoteName(pkMd.columnName), " = ", writeValue(o_, pkMd, sw)),
       pkGetter => {
         val astOfQuery4WhereClause = Utils.createQuery4WhereClause(t, (t0:T) =>
@@ -625,10 +601,6 @@ trait DatabaseAdapter {
    */
   def isNotNullConstraintViolation(e: SQLException): Boolean = false  
 
-  @deprecated("Use foreignKeyConstraintName instead")
-  def foreingKeyConstraintName(foreingKeyTable: Table[_], idWithinSchema: Int) =
-    foreignKeyConstraintName(foreingKeyTable, idWithinSchema)
-
   def foreignKeyConstraintName(foreignKeyTable: Table[_], idWithinSchema: Int) =
     foreignKeyTable.name + "FK" + idWithinSchema
 
@@ -637,22 +609,6 @@ trait DatabaseAdapter {
        vn.view.prefix.get + "_" + vn.view.name + vn.uniqueId.get
      else
        vn.view.name + vn.uniqueId.get
-
-  @deprecated("Use writeForeignKeyDeclaration instead")
-  def writeForeingKeyDeclaration(
-    foreingKeyTable: Table[_], foreingKeyColumnName: String,
-    primaryKeyTable: Table[_], primaryKeyColumnName: String,
-    referentialAction1: Option[ReferentialAction],
-    referentialAction2: Option[ReferentialAction],
-    fkId: Int) =
-      writeForeignKeyDeclaration(
-	foreingKeyTable,
-	foreingKeyColumnName,
-	primaryKeyTable,
-	primaryKeyColumnName,
-	referentialAction1: Option[ReferentialAction],
-	referentialAction2: Option[ReferentialAction],
-	fkId)
 
   def writeForeignKeyDeclaration(
     foreignKeyTable: Table[_], foreignKeyColumnName: String,
@@ -796,8 +752,43 @@ trait DatabaseAdapter {
   def writeSelectElementAlias(se: SelectElement, sw: StatementWriter) = {
     val a = se.aliasSegment
 //    if(a.length > 30)
-//      error("Oracle Bust : " + a)
+//      org.squeryl.internals.Utils.throwError("Oracle Bust : " + a)
     sw.write(quoteName(a))
   }
 
+  def databaseTypeFor(c: Class[_]) =
+    _declarationHandler.handleType(c, None)
+
+  def writeCastInvocation(e: TypedExpressionNode[_], sw: StatementWriter) = {
+    sw.write("cast(")
+    e.write(sw)
+
+    val dbSpecificType = databaseTypeFor(e.mapper.jdbcClass)
+
+    sw.write(" as ")
+    sw.write(dbSpecificType)
+    sw.write(")")
+  }
+
+  def writeCaseStatement(toMatch: Option[ExpressionNode], cases: Iterable[(ExpressionNode, TypedExpressionNode[_])], otherwise: TypedExpressionNode[_], sw: StatementWriter) = {
+
+    sw.write("(case ")
+    toMatch.foreach(_.write(sw))
+    sw.indent
+    sw.nextLine
+
+    for(c <- cases) {
+      sw.write("when ")
+      c._1.write(sw)
+      sw.write(" then ")
+      writeCastInvocation(c._2, sw)
+      sw.nextLine
+    }
+
+    sw.write("else ")
+    writeCastInvocation(otherwise,sw)
+    sw.nextLine
+    sw.unindent
+    sw.write("end)")
+  }
 }

@@ -14,7 +14,7 @@ trait SchoolDb2Object extends KeyedEntity[Long] {
 
 object SchoolDb2 extends SchoolDb2
 
-class Professor(val lastName: String) extends SchoolDb2Object {
+class Professor(val lastName: String, var bossId: Option[Long]=None) extends SchoolDb2Object {
 
   lazy val courses = SchoolDb2.courseAssignments.left(this)
 }
@@ -116,6 +116,10 @@ class SchoolDb2 extends Schema {
   val subjectToCourses =
     oneToManyRelation(subjects, courses).
     via((s,c) => s.id === c.subjectId)
+    
+  val bossToProfessors =
+    oneToManyRelation(professors, professors).
+    via((boss,p) => boss.id === p.bossId)
 
   // the default constraint for all foreign keys in this schema :
   override def applyDefaultForeignKeyPolicy(foreignKeyDeclaration: ForeignKeyDeclaration) =
@@ -359,7 +363,7 @@ abstract class SchoolDb2Tests extends SchemaTester with RunTestsInsideTransactio
   private def _existsAndEquals(oca: Option[CourseAssignment], ca: CourseAssignment) = {
 
     if(oca == None)
-      error("query returned no rows")
+      org.squeryl.internals.Utils.throwError("query returned no rows")
 
     assertEquals(ca.id, oca.get.id, 'testCompositeEquality)
   }
@@ -395,7 +399,7 @@ abstract class SchoolDb2Tests extends SchemaTester with RunTestsInsideTransactio
     }
 
     if(! exceptionThrown)
-      error('testUniquenessConstraint + " failed, unique constraint violation occured")
+      org.squeryl.internals.Utils.throwError('testUniquenessConstraint + " failed, unique constraint violation occured")
 
     assertEquals(1, courseAssignments.Count : Long, 'testUniquenessConstraint)
 

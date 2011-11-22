@@ -111,11 +111,16 @@ trait DslFactory
 
   implicit def binary2ScalarBinary(b: BinaryType) = createLeafNodeOfScalarBinaryType(b)
 
+  implicit def binaryOption2ScalarBinaryOption(b: Option[BinaryType]) = createLeafNodeOfScalarBinaryOptionType(b)
+  
   // List Conversion implicits don't vary with the choice of
   // column/field types, so they don't need to be overridable factory methods :
 
   implicit def traversableOfNumericalExpressionList[A <% NumericalExpression[_]](l: Traversable[A]) =
     new RightHandSideOfIn[NumericalExpression[A]](new ConstantExpressionNodeList[Any](l))
+
+  implicit def traversableOfEnumerationValue2ListEnumerationValue[E <: Enumeration#Value](l: Traversable[E]) = 
+    new RightHandSideOfIn[E](new ConstantExpressionNodeList[E](l)) 
 
 // TODO : find out why this generalized conv for NonNumericals won't work (looks like a scalac bug...):
 //  implicit def traversableOfNonNumercalExpressionList[A <% NonNumericalExpression[_]](l: Traversable[A]) =
@@ -123,6 +128,9 @@ trait DslFactory
 
   implicit def traversableOfString2ListString(l: Traversable[StringType]) =
     new RightHandSideOfIn[StringType](new ConstantExpressionNodeList[StringType](l))
+
+  implicit def traversableOfUuid2ListUuid(l: Traversable[UuidType]) =
+    new RightHandSideOfIn[UuidType](new ConstantExpressionNodeList[UuidType](l))
 
   implicit def traversableOfString2OptionListString(l: Traversable[StringType]) =
     new RightHandSideOfIn[Option[StringType]](new ConstantExpressionNodeList[StringType](l))
@@ -132,6 +140,9 @@ trait DslFactory
 
   implicit def traversableOfDate2OptionListDate(l: Traversable[DateType]) =
     new RightHandSideOfIn[Option[DateType]](new ConstantExpressionNodeList[DateType](l))
+
+  implicit def traversableOfUuidOptionList(l: Traversable[UuidType]) =
+    new RightHandSideOfIn[Option[UuidType]](new ConstantExpressionNodeList[UuidType](l))
 
   implicit def typedExpression2OrderByArg[E <% TypedExpressionNode[_]](e: E) = new OrderByArg(e)
 

@@ -22,12 +22,24 @@ import java.sql.ResultSet
 trait JoinedQueryable[A] extends Queryable[A] {
   
   def name =
-    error('OuterJoinedQueryable + " is a temporary class, not meant to become part of the ast")
+    org.squeryl.internals.Utils.throwError('OuterJoinedQueryable + " is a temporary class, not meant to become part of the ast")
 
   private[squeryl] def give(resultSetMapper: ResultSetMapper, rs: ResultSet) =
-    error('OuterJoinedQueryable + " is a temporary class, not meant to become part of the ast")
+    org.squeryl.internals.Utils.throwError('OuterJoinedQueryable + " is a temporary class, not meant to become part of the ast")
 }
 
-class OuterJoinedQueryable[A](val queryable: Queryable[A], val leftRightOrFull: String) extends JoinedQueryable[Option[A]]
+class OuterJoinedQueryable[A](val queryable: Queryable[A], val leftRightOrFull: String) extends JoinedQueryable[Option[A]]{
+  
+  /**
+   * Allowing an implicit conversion from OuterJoinedQueryable to OptionalQueryable will trigger another conversion
+   * to InnerJoinedQueryable inside org.squeryl.dsl.boilerplate.JoinSignatures#join.  This also allows us to inhibit
+   * the table without using Option[Option[T]] in our results 
+   */
+  def inhibitWhen(inhibited: Boolean) = {
+    this.inhibited = inhibited
+    this
+  }
+  
+}
 
 class InnerJoinedQueryable[A](val queryable: Queryable[A], val leftRightOrFull: String) extends JoinedQueryable[A]

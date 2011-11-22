@@ -46,12 +46,12 @@ class NonNumericalTypeConversion[A](e: ExpressionNode)(implicit val mapper: OutM
  *   NonNumericalExpression[Option[A]]) --> NonNumericalExpression[A]
  */
 class NonNumericalInputOnlyTypeConversion[A](e: ExpressionNode) extends TypeConversion(e) with NonNumericalExpression[A] {
-   override def mapper: OutMapper[A] = error(
+   override def mapper: OutMapper[A] = org.squeryl.internals.Utils.throwError(
       "Bug ! implicit conversion 'emulateSqlTyping1' is not supposed to get triggered in AST nodes participating in ResulSet extraction")
 }
 
 class NumericalInputOnlyTypeConversion[A](e: ExpressionNode) extends TypeConversion(e) with NumericalExpression[A] {
-   override def mapper: OutMapper[A] = error(
+   override def mapper: OutMapper[A] = org.squeryl.internals.Utils.throwError(
       "Bug ! implicit conversion 'emulateSqlTyping1' is not supposed to get triggered in AST nodes participating in ResulSet extraction")
 }
 
@@ -426,6 +426,7 @@ trait TypeArithmetic extends FieldTypes {
   implicit def unaryOpConv18(op: UnaryAgregateLengthNeutralOp[Option[TimestampType]]) = new DateTypeConversion[Option[TimestampType]](op)(createOutMapperTimestampTypeOption)
 
   implicit def nvl1(e: NvlFunctionNonNumerical[Option[DateType],DateType]) = new DateTypeConversion[DateType](e)
+  implicit def nvl4(e: NvlFunctionNonNumerical[Option[TimestampType], TimestampType]) = new DateTypeConversion[TimestampType](e)
   implicit def nvl2(e: NvlFunctionNonNumerical[Option[StringType],StringType]) = new StringTypeConversion[StringType](e)
   implicit def nvl3(e: NvlFunctionNonNumerical[Option[BooleanType],BooleanType]) = new BooleanTypeConversion[BooleanType](e)
 
@@ -436,9 +437,9 @@ trait TypeArithmetic extends FieldTypes {
 
   //Conversions for non numerical case statements and coalesce like functions :
   implicit def nnCoalesce1[A](e: NonNumericalCoalesce[A,A]) = new NonNumericalTypeConversion[A](e)(e.a1.mapper)
-  implicit def nnCoalesce2[A](e: NonNumericalCoalesce[A,Option[A]]) = new NonNumericalTypeConversion[Option[A]](e)(e.a2.mapper)
-  implicit def nnCoalesce3[A](e: NonNumericalCoalesce[Option[A],A]) = new NonNumericalTypeConversion[Option[A]](e)(e.a1.mapper)
-  implicit def nnCoalesce4[A](e: NonNumericalCoalesce[Option[A],Option[A]]) = new NonNumericalTypeConversion[Option[A]](e)(e.a2.mapper)
+  implicit def nnCoalesce2[A](e: NonNumericalCoalesce[A,Option[A]])(implicit f: OutMapper[Option[A]]) = new NonNumericalTypeConversion[Option[A]](e)(f)
+  implicit def nnCoalesce3[A](e: NonNumericalCoalesce[Option[A],A])(implicit f: OutMapper[Option[A]]) = new NonNumericalTypeConversion[Option[A]](e)(f)
+  implicit def nnCoalesce4[A](e: NonNumericalCoalesce[Option[A],Option[A]])(implicit f: OutMapper[Option[A]]) = new NonNumericalTypeConversion[Option[A]](e)(f)
 
   implicit def emulateSqlTyping1[A](e: NonNumericalExpression[Option[A]]): NonNumericalExpression[A] = new NonNumericalInputOnlyTypeConversion(e)
 
@@ -652,4 +653,40 @@ trait TypeArithmetic extends FieldTypes {
     }
     def sample = Some(sampleUuid)
   }
+
+  protected def outMapperFromEnumValue(e: Enumeration#Value) = {
+
+    val enu = Utils.enumerationForValue(e)
+
+    new OutMapper[Enumeration#Value]() {
+
+      def doMap(rs: ResultSet) = {
+        val enumIdx = rs.getInt(this.index)
+        enu.values.find(_.id == enumIdx).get
+      }
+
+      def sample = e
+    }
+  }
+
+  /**
+   * If given None, this function will be unable to create an OutMapper, so will return None
+   */
+  protected def outMapperOptionFromOptionEnumValue(e: Option[Enumeration#Value]) =
+    if(e == None)
+      None
+    else {
+
+      val enu = Utils.enumerationForValue(e.get)
+
+      Some(new OutMapper[Option[Enumeration#Value]]() {
+
+        def doMap(rs: ResultSet) = {
+          val enumIdx = rs.getInt(this.index)
+          Some(enu.values.find(_.id == enumIdx).get)
+        }
+
+        def sample = e
+      })
+    }
 }

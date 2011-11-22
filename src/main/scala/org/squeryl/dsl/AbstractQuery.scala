@@ -93,8 +93,12 @@ abstract class AbstractQuery[R](val isRoot:Boolean) extends Query[R] {
         views.append(sq.node.asInstanceOf[ViewExpressionNode[_]])
 
     for(sq <- subQueryables)
-      if(sq.isQuery)
-        subQueries.append(sq.node.asInstanceOf[QueryExpressionNode[_]])
+      if(sq.isQuery) {
+        val z = sq.node.asInstanceOf[QueryExpressionNode[_]]
+        if(! z.isUseableAsSubquery)
+          org.squeryl.internals.Utils.throwError("Sub query returns a primitive type or a Tuple of primitive type, and therefore is not useable as a subquery in a from or join clause, see \nhttp://squeryl.org/limitations.html")
+        subQueries.append(z)
+      }
     
     val qen = new QueryExpressionNode[R](this, qy, subQueries, views)
     val (sl,d) = qy.invokeYieldForAst(qen, resultSetMapper)
@@ -201,7 +205,7 @@ abstract class AbstractQuery[R](val isRoot:Boolean) extends Query[R] {
       if(!_nextCalled)
         _next
       if(!_hasNext)
-        error("next called with no rows available")
+        org.squeryl.internals.Utils.throwError("next called with no rows available")
       _nextCalled = false
 
       if(s.isLoggingEnabled)
@@ -234,6 +238,7 @@ abstract class AbstractQuery[R](val isRoot:Boolean) extends Query[R] {
       val ojq = q.asInstanceOf[OuterJoinedQueryable[U]]
       val sq = createSubQueryable[U](ojq.queryable)
       sq.node.joinKind = Some((ojq.leftRightOrFull, "outer"))
+      sq.node.inhibited = ojq.inhibited
       new SubQueryable(sq.queryable, Some(sq.sample).asInstanceOf[U], sq.resultSetMapper, sq.isQuery, sq.node)
     }
     else if(q.isInstanceOf[InnerJoinedQueryable[U]]) {
@@ -273,7 +278,7 @@ abstract class AbstractQuery[R](val isRoot:Boolean) extends Query[R] {
         else
           queryable.give(resultSetMapper, rs)
       }
-      else if((node.isRightJoined || node.isOuterJoinedDEPRECATED) && resultSetMapper.isNoneInOuterJoin(rs))
+      else if((node.isRightJoined) && resultSetMapper.isNoneInOuterJoin(rs))
         sample
       else
         queryable.give(resultSetMapper, rs)

@@ -17,10 +17,11 @@ package org.squeryl.dsl
 
 import ast._
 import boilerplate._
-import fsm.{QueryElements, StartState, WhereState, Conditioned, Unconditioned}
+import fsm._
 import org.squeryl.internals._
 import org.squeryl._
 import java.sql.{SQLException, ResultSet}
+import collection.mutable.ArrayBuffer
 
 trait QueryDsl
   extends DslFactory
@@ -54,6 +55,9 @@ trait QueryDsl
     }
   }
 
+   def transaction[A](s: Session)(a: =>A) = 
+     _executeTransactionWithin(s, a _)
+   
   /**
    * 'transaction' causes a new transaction to begin and commit after the block execution, or rollback
    * if an exception occurs. Invoking a transaction always cause a new one to
@@ -110,6 +114,7 @@ trait QueryDsl
       }
       catch {
         case e:SQLException => {
+          Utils.close(c)
           if(txOk) throw e // if an exception occured b4 the commit/rollback we don't want to obscure the original exception 
         }
       }
@@ -132,58 +137,6 @@ trait QueryDsl
 
   def &[A](i: =>TypedExpressionNode[A]): A =
     FieldReferenceLinker.pushExpressionOrCollectValue[A](i _)
-
-  @deprecated("use the new 'join' keyword instead http://squeryl.org/joins.html")
-  def leftOuterJoin[A](a: A, matchClause: =>ExpressionNode): Option[A] = {
-    val im = FieldReferenceLinker.isYieldInspectionMode
-
-    if(im) {
-      val joinedTableOrSubquery = FieldReferenceLinker.findOwnerOfSample(a).get
-      val oje = new OuterJoinExpression(joinedTableOrSubquery,"left", matchClause)
-      joinedTableOrSubquery.outerJoinExpression = Some(oje)
-      Some(a)
-    }
-    else if(a.isInstanceOf[net.sf.cglib.proxy.Factory])
-      None
-    else
-      Some(a)  
-  }
-
-  @deprecated("use the new 'join' keyword instead http://squeryl.org/joins.html")
-  def rightOuterJoin[A,B](a: A, b: B, matchClause: =>ExpressionNode): (Option[A],B) = {
-    val im = FieldReferenceLinker.isYieldInspectionMode
-
-    if(im) {
-      val joinedTableOrSubquery = FieldReferenceLinker.findOwnerOfSample(a).get
-      val oje = new OuterJoinExpression(joinedTableOrSubquery,"right", matchClause)
-      joinedTableOrSubquery.outerJoinExpression = Some(oje)
-      (Some(a), b)
-    }
-    else {
-      val rA = if(a.isInstanceOf[net.sf.cglib.proxy.Factory]) None else Some(a)
-      (rA,b)
-    }
-  }
-
-  @deprecated("use the new 'join' keyword instead http://squeryl.org/joins.html")
-  def fullOuterJoin[A,B](a: A, b: B, matchClause: =>ExpressionNode): (Option[A],Option[B]) = {
-    val im = FieldReferenceLinker.isYieldInspectionMode
-
-    if(im) {
-      val joinedTableOrSubquery = FieldReferenceLinker.findOwnerOfSample(a).get
-      val oje = new OuterJoinExpression(joinedTableOrSubquery,"full", matchClause)
-      joinedTableOrSubquery.outerJoinExpression = Some(oje)
-      val parentQuery = FieldReferenceLinker.inspectedQueryExpressionNode
-      parentQuery.tableExpressions.head.isRightJoined = true
-      (Some(a), Some(b))
-    }
-    else {
-      val rA = if(a.isInstanceOf[net.sf.cglib.proxy.Factory]) None else Some(a)
-      val rB = if(b.isInstanceOf[net.sf.cglib.proxy.Factory]) None else Some(b)
-      (rA,rB)
-    }
-  }
-
 
   implicit def singleColumnQuery2RightHandSideOfIn[A](q: Query[A]) =
     new RightHandSideOfIn[A](q.copy(false).ast)
@@ -227,7 +180,7 @@ trait QueryDsl
 
     def statement: String = _inner.statement
 
-    // Paginating a Count query makes no sense perhaps an error() would be more appropriate here:
+    // Paginating a Count query makes no sense perhaps an org.squeryl.internals.Utils.throwError() would be more appropriate here:
     def page(offset:Int, length:Int) = this      
 
     def distinct = this
@@ -263,7 +216,7 @@ trait QueryDsl
     
     def dumpAst = q.dumpAst
 
-    // TODO: think about this : Paginating a Count query makes no sense perhaps an error() would be more appropriate here.
+    // TODO: think about this : Paginating a Count query makes no sense perhaps an org.squeryl.internals.Utils.throwError() would be more appropriate here.
     def page(offset:Int, length:Int) = this
     
     def statement: String = q.statement
@@ -280,20 +233,6 @@ trait QueryDsl
     private[squeryl] def give(rsm: ResultSetMapper, rs: ResultSet) =
       q.invokeYield(rsm, rs).measures
   }
-
-  @deprecated("please use aBooleanField === true")
-  implicit def boolean2booleanFieldEqualsTrue(b: BooleanType): LogicalBoolean =
-    new BinaryOperatorNodeLogicalBoolean(
-      createLeafNodeOfScalarBooleanType(b),
-      new ConstantExpressionNode[BooleanType](mapBoolean2BooleanType(true)),
-      "=")
-
-  @deprecated("please use aBooleanField === true")
-  implicit def optionBoolean2booleanFieldEqualsTrue(b: Option[BooleanType]): LogicalBoolean =
-    new BinaryOperatorNodeLogicalBoolean(
-      createLeafNodeOfScalarBooleanOptionType(b),
-      new ConstantExpressionNode[Option[BooleanType]](Some(mapBoolean2BooleanType(true))),
-      "=")
 
   implicit def queryable2OptionalQueryable[A](q: Queryable[A]) = new OptionalQueryable[A](q)
 
@@ -611,14 +550,13 @@ trait QueryDsl
     if(isSelfReference)
       assert(ee.right._fieldMetaData.isIdFieldOfKeyedEntity || ee.left._fieldMetaData.isIdFieldOfKeyedEntity)
 
-    if(ee.left._fieldMetaData.parentMetaData.clasz == rightTable.classOfT) {
-      if(!isSelfReference)
-        assert(ee.right._fieldMetaData.isIdFieldOfKeyedEntity)
+    if(ee.left._fieldMetaData.parentMetaData.clasz == rightTable.classOfT &&
+       (!isSelfReference || (isSelfReference && ee.right._fieldMetaData.isIdFieldOfKeyedEntity)) ) {
+      assert(ee.right._fieldMetaData.isIdFieldOfKeyedEntity)
       (ee.right._fieldMetaData, ee.left._fieldMetaData)
     }
     else {
-      if(!isSelfReference)
-        assert(ee.left._fieldMetaData.isIdFieldOfKeyedEntity)
+      assert(ee.left._fieldMetaData.isIdFieldOfKeyedEntity)
       (ee.left._fieldMetaData, ee.right._fieldMetaData)
     }
   }
@@ -666,4 +604,13 @@ trait QueryDsl
   implicit def t8te[A1,A2,A3,A4,A5,A6,A7,A8](t: (A1,A2,A3,A4,A5,A6,A7,A8)) = new CompositeKey8[A1,A2,A3,A4,A5,A6,A7,A8](t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
 
   implicit def t9te[A1,A2,A3,A4,A5,A6,A7,A8,A9](t: (A1,A2,A3,A4,A5,A6,A7,A8,A9)) = new CompositeKey9[A1,A2,A3,A4,A5,A6,A7,A8,A9](t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
+
+  // Case statements :
+
+  def caseOf[A](expr: NumericalExpression[A]) = new CaseOfNumericalExpressionMatchStart(expr)
+
+  def caseOf[A](expr: NonNumericalExpression[A]) = new CaseOfNonNumericalExpressionMatchStart(expr)
+
+  def caseOf = new CaseOfConditionChainStart
+
 }

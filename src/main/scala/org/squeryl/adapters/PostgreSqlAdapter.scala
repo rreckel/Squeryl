@@ -24,7 +24,7 @@ import org.squeryl.{Session, Table}
 class PostgreSqlAdapter extends DatabaseAdapter {
 
   override def intTypeDeclaration = "integer"
-  override def stringTypeDeclaration = "varchar(255)"
+  override def stringTypeDeclaration = "varchar"
   override def stringTypeDeclaration(length:Int) = "varchar("+length+")"
   override def booleanTypeDeclaration = "boolean"
   override def doubleTypeDeclaration = "double precision"
@@ -71,7 +71,7 @@ class PostgreSqlAdapter extends DatabaseAdapter {
       return
     }
 
-    val f = t.posoMetaData.fieldsMetaData.filter(fmd => fmd != autoIncPK.get)
+    val f = getInsertableFields(t.posoMetaData.fieldsMetaData)
 
     val colNames = List(autoIncPK.get) ::: f.toList
     val colVals = List("nextval('" + quoteName(autoIncPK.get.sequenceName) + "')") ::: f.map(fmd => writeValue(o_, fmd, sw)).toList

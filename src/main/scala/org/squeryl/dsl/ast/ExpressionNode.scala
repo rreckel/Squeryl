@@ -20,6 +20,8 @@ import collection.mutable.ArrayBuffer
 import org.squeryl.internals._
 import org.squeryl.dsl._
 import org.squeryl.{Query, KeyedEntity, Schema, Session}
+import javax.management.RuntimeErrorException
+import java.sql.ResultSet
 
 trait ExpressionNode {
 
@@ -92,7 +94,7 @@ trait ExpressionNode {
 
   def ? : this.type = {
     if(! this.isInstanceOf[ConstantExpressionNode[_]])
-      error("the '?' operator (shorthand for 'p.inhibitWhen(p == None))' can only be used on a constant query argument")
+      org.squeryl.internals.Utils.throwError("the '?' operator (shorthand for 'p.inhibitWhen(p == None))' can only be used on a constant query argument")
 
     val c = this.asInstanceOf[ConstantExpressionNode[_]]
 
@@ -305,13 +307,16 @@ class TokenExpressionNode(val token: String) extends ExpressionNode {
   def doWrite(sw: StatementWriter) = sw.write(token)
 }
 
-class ConstantExpressionNode[T](val value: T) extends ExpressionNode {
 
-  //def this(v:T) = this(v, false)
+class UntypedConstantExpressionNode[T](v: T) extends ConstantExpressionNode[T](v, None : Option[OutMapper[T]])
+
+class ConstantExpressionNode[T] protected (val value: T, _mapper: Option[OutMapper[T]]) extends ExpressionNode {
+
+  def this(v: T)(implicit m: OutMapper[T]) = this(v,Some(m))
 
   private def needsQuote = value.isInstanceOf[String]
 
-  def mapper: OutMapper[T] = error("outMapper should not be used on " + 'ConstantExpressionNode)
+  def mapper = _mapper.getOrElse(Utils.throwError("No OutMapper !"))
 
   def doWrite(sw: StatementWriter) = {
     if(sw.isForDisplay) {
@@ -351,7 +356,7 @@ class FunctionNode[A](val name: String, _mapper : Option[OutMapper[A]], val args
 
   def this(name: String, args: ExpressionNode*) = this(name, None, args)
 
-  def mapper: OutMapper[A] = _mapper.getOrElse(error("no mapper available"))
+  def mapper: OutMapper[A] = _mapper.getOrElse(org.squeryl.internals.Utils.throwError("no mapper available"))
 
   def doWrite(sw: StatementWriter) = {
 
@@ -471,19 +476,8 @@ trait QueryableExpressionNode extends ExpressionNode with UniqueIdInAliaseRequir
   // this 'old' join syntax will become deprecated : 
   var outerJoinExpression: Option[OuterJoinExpression] = None
 
-  def isOuterJoinedDEPRECATED = outerJoinExpression != None
-
   var isRightJoined = false
-  
-  def dumpOuterJoinInfoForAst(sb: StringBuffer) =
-    if(isOuterJoinedDEPRECATED) {
-      val oje = outerJoinExpression.get
-      sb.append(oje.leftRightOrFull)
-      sb.append("OuterJoin(")
-      sb.append(oje.matchExpression.writeToString)
-      sb.append(")")
-    }
-  
+
   def isChild(q: QueryableExpressionNode): Boolean  
 
   def owns(aSample: AnyRef): Boolean
