@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2012. Ville de Luxembourg. All rights reserved.
+ */
+
 package org.squeryl.test.schooldb
 
 /*******************************************************************************
@@ -1568,19 +1572,19 @@ abstract class SchoolDbTestRun extends SchoolDbTestBase {
 
     println("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*= MY TESTS *=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
     val s = schools.insert(new School(1, "My new school", 0))
-    val v = from(schools.history)(h => where(h.id == s.id) select(h)).toList
+    val v = from(schools.history)(h => where(h.id === s.id) select(h)).toList
     println("History of school: " + v)
     assert(v.size == 1, "We should have one version of school, but got: " + v.size)
     assert(v.head.historyEventType == HistoryEventType.Created, "History event type should be created")
 
     val stid = v.head.transactionId
-    val t = from(transactions)(t => where(t.id == stid) select(t)).toList
+    val t = from(transactions)(t => where(t.id === stid) select(t)).toList
     println("Transaction: " + t)
 
     val ss = new School(1, "My very new School", 0)
     ss.id_field = s.id
     schools.update(ss)
-    val vv = from(schools.history)(h => where(h.id == s.id) select(h)).toList
+    val vv = from(schools.history)(h => where(h.id === s.id) select(h)).toList
     println("History of school after update: " + vv)
     assert(vv.size == 2, "We should have two versions of school, but got: " + vv.size)
 
