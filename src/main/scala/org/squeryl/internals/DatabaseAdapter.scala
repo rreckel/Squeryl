@@ -266,35 +266,31 @@ trait DatabaseAdapter {
       )
     }
     sw.write(")")
-  }
-
-  private def _prepareStatement(c: Connection, sw: StatementWriter, session: Session): PreparedStatement =
-    prepareStatement(c, sw, c.prepareStatement(sw.statement), session)
+  }                     
   
-  def prepareStatement(c: Connection, sw: StatementWriter, s: PreparedStatement, session: Session): PreparedStatement = {    
-
-    var i = 1;
-    for(p <- sw.params) {
-
-      if(p.isInstanceOf[Option[_]]) {
-        val o = p.asInstanceOf[Option[_]]
-        if(o == None)
-          s.setObject(i, null)
-        else
-          s.setObject(i, convertToJdbcValue(o.get.asInstanceOf[AnyRef]))
-      }
-      else
-        s.setObject(i, convertToJdbcValue(p))
-      i += 1
+  def convertParamsForJdbc(params: Iterable[AnyRef]) =
+    for(p <- params) yield {
+       p match {
+         case null => null	        
+	     case None => null
+	     case Some(x: AnyRef) => convertToJdbcValue(x)
+	     case x: AnyRef =>  convertToJdbcValue(x)
+	   }     
     }
-    s
+        
+  def fillParamsInto(params: Iterable[AnyRef], s: PreparedStatement) {    
+    var i = 1;
+    for(p <- params) {
+      s.setObject(i, p)
+      i += 1
+    }    
   }
 
-  private def _exec[A](s: Session, sw: StatementWriter, block: ()=>A): A =
+  private def _exec[A](s: Session, sw: StatementWriter, block: Iterable[AnyRef]=>A, args: Iterable[AnyRef]): A =
     try {
       if(s.isLoggingEnabled)
         s.log(sw.toString)      
-      block()
+      block(args)
     }
     catch {
       case e: SQLException =>
@@ -302,7 +298,8 @@ trait DatabaseAdapter {
             "Exception while executing statement : "+ e.getMessage+
            "\nerrorCode: " +
             e.getErrorCode + ", sqlState: " + e.getSQLState + "\n" +
-            sw.statement, e)
+            sw.statement + "\njdbcParams:" + 
+            args.mkString("[",",","]"), e)
     }    
 
   def failureOfStatementRequiresRollback = false
@@ -347,21 +344,28 @@ trait DatabaseAdapter {
     sw
   }
 
-  protected def exec[A](s: Session, sw: StatementWriter)(block: =>A): A =
-    _exec[A](s, sw, block _)
+  protected def exec[A](s: Session, sw: StatementWriter)(block: Iterable[AnyRef]=>A): A = {
+    val p = convertParamsForJdbc(sw.paramsZ)
+    _exec[A](s, sw, block, p)
+  }
 
-  def executeQuery(s: Session, sw: StatementWriter) = exec(s, sw) {
-    val st = _prepareStatement(s.connection, sw, s)
+  def executeQuery(s: Session, sw: StatementWriter) = exec(s, sw) { params =>
+    val st = s.connection.prepareStatement(sw.statement)
+    fillParamsInto(params, st)
     (st.executeQuery, st)
   }
 
-  def executeUpdate(s: Session, sw: StatementWriter):(Int,PreparedStatement) = exec(s, sw) {
-    val st = _prepareStatement(s.connection, sw, s)
+  def executeUpdate(s: Session, sw: StatementWriter):(Int,PreparedStatement) = exec(s, sw) { params =>
+    val st = s.connection.prepareStatement(sw.statement)
+    fillParamsInto(params, st)
     (st.executeUpdate, st)
   }
 
-  def executeUpdateAndCloseStatement(s: Session, sw: StatementWriter): Int = exec(s, sw) {
-    val st = _prepareStatement(s.connection, sw, s)
+  def executeUpdateAndCloseStatement(s: Session, sw: StatementWriter): Int = exec(s, sw) { params =>
+    if(s.isLoggingEnabled)
+      s.log(sw.toString)
+    val st = s.connection.prepareStatement(sw.statement)
+    fillParamsInto(params, st)
     try {
       st.executeUpdate
     }
@@ -370,9 +374,11 @@ trait DatabaseAdapter {
     }
   }
 
-  def executeUpdateForInsert(s: Session, sw: StatementWriter, ps: PreparedStatement) = exec(s, sw) {
-    val st = prepareStatement(s.connection, sw, ps, s)
-    st.executeUpdate
+  def executeUpdateForInsert(s: Session, sw: StatementWriter, ps: PreparedStatement) = exec(s, sw) { params =>
+    if(s.isLoggingEnabled)
+      s.log(sw.toString)
+    fillParamsInto(params, ps)
+    ps.executeUpdate
   }
 
   protected def getInsertableFields(fmd : Iterable[FieldMetaData]) = fmd.filter(fmd => !fmd.isAutoIncremented && fmd.isInsertable )
@@ -491,11 +497,14 @@ trait DatabaseAdapter {
     t.posoMetaData.primaryKey.getOrElse(org.squeryl.internals.Utils.throwError("writeUpdate was called on an object that does not extend from KeyedEntity[]")).fold(
       pkMd => sw.write(quoteName(pkMd.columnName), " = ", writeValue(o_, pkMd, sw)),
       pkGetter => {
-        val astOfQuery4WhereClause = Utils.createQuery4WhereClause(t, (t0:T) =>
-          pkGetter.invoke(t0).asInstanceOf[CompositeKey].buildEquality(o.asInstanceOf[KeyedEntity[CompositeKey]].id))
+        Utils.createQuery4WhereClause(t, (t0:T) => {
+          val ck = pkGetter.invoke(t0).asInstanceOf[CompositeKey]
 
-        astOfQuery4WhereClause.inhibitAliasOnSelectElementReference = true
-        astOfQuery4WhereClause.whereClause.get.write(sw)
+          val fieldWhere = ck._fields map (fmd => quoteName(fmd.columnName) + " = " + writeValue(o_, fmd, sw))
+          sw.write(fieldWhere.mkString(" and "))
+
+          new EqualityExpression(new InputOnlyConstantExpressionNode(1), new InputOnlyConstantExpressionNode(1))
+        })
       }
     )
 
@@ -663,6 +672,9 @@ trait DatabaseAdapter {
   def dropTable(t: Table[_]) =
     execFailSafeExecute(writeDropTable(t.prefixedName), e=> isTableDoesNotExistException(e))
 
+  def writeCompositePrimaryKeyConstraint(t: Table[_], cols: Iterable[FieldMetaData]) = 
+      writeUniquenessConstraint(t, cols);
+
   def writeUniquenessConstraint(t: Table[_], cols: Iterable[FieldMetaData]) = {
     //ALTER TABLE TEST ADD CONSTRAINT NAME_UNIQUE UNIQUE(NAME)
     val sb = new StringBuilder(256)
@@ -710,7 +722,7 @@ trait DatabaseAdapter {
 
     sb.append("index ")
 
-    val tableName = columnDefs.head.parentMetaData.viewOrTable.name
+    val tableName = columnDefs.head.parentMetaData.viewOrTable.prefixedName
 
     if(name != None)
       sb.append(quoteName(name.get))

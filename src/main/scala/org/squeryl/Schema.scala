@@ -32,6 +32,8 @@ trait Schema {
    */
   private val _tables = new ArrayBuffer[Table[_]] 
   
+  def tables: Seq[Table[_]] = _tables.toSeq
+  
   private val _tableTypes = new HashMap[Class[_], Table[_]]
 
   private val _oneToManyRelations = new ArrayBuffer[OneToManyRelation[_,_]]
@@ -84,8 +86,12 @@ trait Schema {
 
   object NamingConventionTransforms {
     
+    @deprecated("use snakify() instead as of 0.9.5beta")
     def camelCase2underScore(name: String) =
       name.toList.map(c => if(c.isUpper) "_" + c else c).mkString
+      
+    def snakify(name: String) =
+      name.replaceAll("^([^A-Za-z_])", "_$1").replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase
   }
 
   def columnNameFromPropertyName(propertyName: String) = propertyName
@@ -137,7 +143,7 @@ trait Schema {
       statementHandler("-- composite key indexes :")
     
     for(cpk <- compositePKs) {
-      val createConstraintStmt = _dbAdapter.writeUniquenessConstraint(cpk._1, cpk._2)
+      val createConstraintStmt = _dbAdapter.writeCompositePrimaryKeyConstraint(cpk._1, cpk._2)
       statementHandler(createConstraintStmt + ";")
     }
 
@@ -175,7 +181,7 @@ trait Schema {
     if(_dbAdapter.supportsForeignKeyConstraints)
       _declareForeignKeyConstraints
 
-    _createUniqueConstraintsOfCompositePKs
+    _createConstraintsOfCompositePKs
 
     createColumnGroupConstraintsAndIndexes
   }
@@ -267,9 +273,9 @@ trait Schema {
     }
   }
 
-  private def _createUniqueConstraintsOfCompositePKs =
+  private def _createConstraintsOfCompositePKs =
     for(cpk <- _allCompositePrimaryKeys) {
-      val createConstraintStmt = _dbAdapter.writeUniquenessConstraint(cpk._1, cpk._2)
+      val createConstraintStmt = _dbAdapter.writeCompositePrimaryKeyConstraint(cpk._1, cpk._2)
       _executeDdl(createConstraintStmt)
     }  
 
@@ -554,7 +560,7 @@ trait Schema {
     new LifecycleEventPercursorClass[A](m.erasure, this, BeforeInsert)
 
   protected def beforeUpdate[A](t: Table[A]) =
-    new LifecycleEventPercursorTable[A](t, BeforeInsert)
+    new LifecycleEventPercursorTable[A](t, BeforeUpdate)
 
   protected def beforeUpdate[A]()(implicit m: Manifest[A]) =
     new LifecycleEventPercursorClass[A](m.erasure, this, BeforeUpdate)

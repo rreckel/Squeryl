@@ -22,6 +22,7 @@ import org.squeryl.internals._
 import org.squeryl._
 import java.sql.{SQLException, ResultSet}
 import collection.mutable.ArrayBuffer
+import scala.runtime.NonLocalReturnControl
 
 trait QueryDsl
   extends DslFactory
@@ -54,6 +55,15 @@ trait QueryDsl
       if(s != None) s.get.bindToCurrentThread
     }
   }
+
+  def transaction[A](sf: SessionFactory)(a: =>A) = 
+    _executeTransactionWithin(sf.newSession, a _)
+  
+  def inTransaction[A](sf: SessionFactory)(a: =>A) =
+    if(! Session.hasCurrentSession)
+      _executeTransactionWithin(sf.newSession, a _)
+    else
+      _executeTransactionWithin(Session.currentSession, a _)
 
    def transaction[A](s: Session)(a: =>A) = 
      _executeTransactionWithin(s, a _)
@@ -96,7 +106,8 @@ trait QueryDsl
 
     val c = s.connection
 
-    if(c.getAutoCommit)
+    val originalAutoCommit = c.getAutoCommit
+    if(originalAutoCommit)
       c.setAutoCommit(false)
 
     var txOk = false
@@ -105,12 +116,21 @@ trait QueryDsl
       txOk = true
       res
     }
+    catch {
+      case e:NonLocalReturnControl[_] => 
+      {
+        txOk = true
+        throw e
+      }
+    }
     finally {
       try {
         if(txOk)
           c.commit
         else
           c.rollback
+        if(originalAutoCommit != c.getAutoCommit)
+          c.setAutoCommit(originalAutoCommit)
       }
       catch {
         case e:SQLException => {
