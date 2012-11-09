@@ -636,6 +636,20 @@ trait Schema {
     tableA
   }
 
+  def versionedTable[A, B <: Versioned](tableName: String = "", versionedTableName: String = "", tablePrefix: String = "", versionedTablePrefix: String = "")(implicit mA: Manifest[A], mB: Manifest[B]) = {
+    val tn = if(tableName.length > 0) tableName else tableNameFromClass(mA.erasure)
+    val tp = if(tablePrefix.length > 0) Some(tablePrefix) else None
+    val vtn = if(versionedTableName.length > 0) versionedTableName else tableNameFromClass(mB.erasure)
+    val vtp = if(versionedTablePrefix.length > 0) Some(versionedTablePrefix) else None
+
+    val tableB = new Table[B](vtn, mB.erasure.asInstanceOf[Class[B]], thisSchema, vtp)
+    val tableA = new VersionedTable[A,B](tn, mA.erasure.asInstanceOf[Class[A]], thisSchema, tp, tableB)
+    _addTable(tableA)
+    _addTable(tableB)
+
+    tableA
+  }
+
   def transactionTable[A <: KeyedEntity[Long]]: Option[Table[A]] = None
 //  def transactionTable: Option[Table[_]] = None
 }

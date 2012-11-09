@@ -141,9 +141,9 @@ class ForeignKeyDeclaration(val idWithinSchema: Int, val foreignKeyColumnName: S
 
 object HistoryEventType extends Enumeration {
   type HistoryEventType = Value
-  val Created = Value(1, "Created")
-  val Updated = Value(2, "Updated")
-  val Deleted = Value(3, "Deleted")
+  val Created = Value(0, "Created")
+  val Updated = Value(1, "Updated")
+  val Deleted = Value(2, "Deleted")
 }
 
 /**
