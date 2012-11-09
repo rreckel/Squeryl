@@ -106,7 +106,7 @@ class School(val addressId: Int, val name: String, val parentSchoolId: Long) ext
   def id = id_field
 }
 
-case class SchoolVersion(id: Long, adressId: Int, name: String, transactionId: Long, historyEventType: HistoryEventType.Value, versionNumber: Int) extends Versioned {
+case class SchoolVersion(id: Long, adressId: Int, name: String, transactionId: Long, historyEventType: HistoryEventType.Value, versionNumber: Int) {
   def this() = this(0l, 0, "", 0l, HistoryEventType.Created, 0)
 }
 
@@ -166,9 +166,15 @@ class SchoolDb extends Schema {
 
   val courseAssigments = table[CourseAssignment]
 
+  implicit object SchoolVED extends VersionedEntityDef[SchoolVersion, Long] {
+    def getTransactionIdPropertyName = "transactionId"
+
+    def getHistoryEventTypePropertyName = "historyEventType"
+  }
+
   val schools = versionedTable[School, SchoolVersion]
   val transactions = table[Transaction]
-  override def transactionTable[A <: KeyedEntity[Long]]: Option[Table[A]] = Some(transactions.asInstanceOf[Table[A]])
+  override def transactionTable[A <: KeyedEntity[_]]: Option[Table[A]] = Some(transactions.asInstanceOf[Table[A]])
 
   val postalCodes = table[PostalCode]
   

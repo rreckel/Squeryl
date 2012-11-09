@@ -313,7 +313,7 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
   }
 }
 
-class VersionedTable[A,B <: Versioned](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val history: Table[B])
+class VersionedTable[A,B, TT <: KeyedEntity[_]](n: String, c: Class[A], schema: Schema, _prefix: Option[String], val history: Table[B], ved: VersionedEntityDef[B, _], transactionTable: Option[Table[TT]] = None)
   extends Table[A](n,c,schema, _prefix) {
 
   override def insert(t: A): A = {
@@ -342,22 +342,22 @@ class VersionedTable[A,B <: Versioned](n: String, c: Class[A], schema: Schema, _
   }
 
   private def createVersion(a: A, historyEventType: HistoryEventType.Value):B = {
-    val copy = history._createInstanceOfRowObject.asInstanceOf[B]
+    val copy = history._createInstanceOfRowObject
     val fmds = history.posoMetaData.fieldsMetaData.map(fmd => Pair(fmd, posoMetaData.fieldsMetaData.find(_.nameOfProperty == fmd.nameOfProperty)))
     fmds.foreach({case(hfmd, fmd) => (fmd.foreach(f => hfmd.set(copy, f.get(a.asInstanceOf[AnyRef]))))})
 
-    val tid = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == "transactionId")
+    val tid = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == ved.getTransactionIdPropertyName)
     tid.foreach(_.set(copy, transactionId.asInstanceOf[AnyRef]))
 
-    val het = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == "historyEventType")
+    val het = history.posoMetaData.fieldsMetaData.find(_.nameOfProperty == ved.getHistoryEventTypePropertyName)
     het.foreach(_.set(copy, new Integer(historyEventType.id)))
-    copy
+    copy.asInstanceOf[B]
   }
 
   private def transactionId[T,K]()(implicit ev: T <:< KeyedEntity[K]) = {
     Session.currentSession.transactionId match {
       case Some(id) => id  // return the id if it was already created
-      case _ => schema.transactionTable match {
+      case _ => transactionTable.orElse(schema.transactionTable) match {
         case Some(t: Table[T]) => {         // If there is a transaction table, we create a new Transaction and return it's key
           val tid:T = t.insert(t._createInstanceOfRowObject.asInstanceOf[T])
           Session.currentSession.transactionId = Some(tid.id)

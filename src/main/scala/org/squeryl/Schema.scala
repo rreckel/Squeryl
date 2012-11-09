@@ -626,30 +626,34 @@ trait Schema {
       
   }
 
-  def versionedTable[A, B <: Versioned]()(implicit mA: Manifest[A], mB: Manifest[B]) = {
+  def versionedTable[A, B]()(implicit mA: Manifest[A], mB: Manifest[B], ved: VersionedEntityDef[B, _]): VersionedTable[A,B,_] = {
+    versionedTable(None)
+  }
+
+  def versionedTable[A, B, TT <: KeyedEntity[_]](transactionTable: Option[Table[TT]])(implicit mA: Manifest[A], mB: Manifest[B], ved: VersionedEntityDef[B, _]) = {
 
     val tableB = new Table[B](tableNameFromClass(mB.erasure), mB.erasure.asInstanceOf[Class[B]], thisSchema, None)
-    val tableA = new VersionedTable[A,B](tableNameFromClass(mA.erasure), mA.erasure.asInstanceOf[Class[A]], thisSchema, None, tableB)
+    val tableA = new VersionedTable[A,B,TT](tableNameFromClass(mA.erasure), mA.erasure.asInstanceOf[Class[A]], thisSchema, None, tableB, ved, transactionTable)
     _addTable(tableA)
     _addTable(tableB)
 
     tableA
   }
 
-  def versionedTable[A, B <: Versioned](tableName: String = "", versionedTableName: String = "", tablePrefix: String = "", versionedTablePrefix: String = "")(implicit mA: Manifest[A], mB: Manifest[B]) = {
+  def versionedTable[A, B, TT <: KeyedEntity[_]](tableName: String = "", versionedTableName: String = "", tablePrefix: String = "", versionedTablePrefix: String = "", transactionTable: Option[Table[TT]])(implicit mA: Manifest[A], mB: Manifest[B], ved: VersionedEntityDef[B, _]) = {
     val tn = if(tableName.length > 0) tableName else tableNameFromClass(mA.erasure)
     val tp = if(tablePrefix.length > 0) Some(tablePrefix) else None
     val vtn = if(versionedTableName.length > 0) versionedTableName else tableNameFromClass(mB.erasure)
     val vtp = if(versionedTablePrefix.length > 0) Some(versionedTablePrefix) else None
 
     val tableB = new Table[B](vtn, mB.erasure.asInstanceOf[Class[B]], thisSchema, vtp)
-    val tableA = new VersionedTable[A,B](tn, mA.erasure.asInstanceOf[Class[A]], thisSchema, tp, tableB)
+    val tableA = new VersionedTable[A,B,TT](tn, mA.erasure.asInstanceOf[Class[A]], thisSchema, tp, tableB, ved, transactionTable)
     _addTable(tableA)
     _addTable(tableB)
 
     tableA
   }
 
-  def transactionTable[A <: KeyedEntity[Long]]: Option[Table[A]] = None
+  def transactionTable[A <: KeyedEntity[_]]: Option[Table[A]] = None
 //  def transactionTable: Option[Table[_]] = None
 }

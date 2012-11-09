@@ -146,11 +146,7 @@ object HistoryEventType extends Enumeration {
   val Deleted = Value(2, "Deleted")
 }
 
-/**
- * Version tables must mix in this trait
- */
-trait Versioned {
-  def transactionId: Long
-  def historyEventType: HistoryEventType.Value
-  def versionNumber: Int
+trait VersionedEntityDef[-A, K] {
+  def getTransactionIdPropertyName: String
+  def getHistoryEventTypePropertyName: String
 }
