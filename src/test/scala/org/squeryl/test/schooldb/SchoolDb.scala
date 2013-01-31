@@ -218,7 +218,12 @@ class SchoolDb extends Schema {
     super.drop
   }
 
+  def studentTransform(s: Student) = {
+     new Student(s.name, s.lastName, s.age, ((s.gender % 2) + 1), s.addressId, s.isMultilingual)
+  }
+
   val beforeInsertsOfPerson = new ArrayBuffer[Person]
+  val transformedStudents = new ArrayBuffer[Student]
   val beforeInsertsOfKeyedEntity = new ArrayBuffer[KeyedEntity[_]]
   val beforeInsertsOfProfessor = new ArrayBuffer[Professor]
   val afterInsertsOfProfessor = new ArrayBuffer[Professor]
@@ -229,6 +234,9 @@ class SchoolDb extends Schema {
   val professorsCreatedWithFactory = new ArrayBuffer[Int]
 
   override def callbacks = Seq(
+    // We'll change the gender of z1 z2 student
+    beforeInsert[Student]
+      map(s => {if (s.name == "z1" && s.lastName == "z2"){val s2 = studentTransform(s); transformedStudents.append(s2); s2} else s}),
 
     beforeInsert[Person]
       map(p => {beforeInsertsOfPerson.append(p); p}),
@@ -566,10 +574,14 @@ abstract class SchoolDbTestRun extends SchoolDbTestBase {
     afterInsertsOfProfessor.clear
     beforeDeleteOfSchool.clear
     professorsCreatedWithFactory.clear
+    transformedStudents.clear
 
     val s1 = students.insert(new Student("z1", "z2", Some(4), 1, Some(4), Some(true)))
+    val sOpt = from(students)(s => where(s.name === "z1" and s.lastName === "z2") select(s)).headOption
 
+    assert(sOpt.isDefined && sOpt.map(_.gender == 2).getOrElse(false))
     assert(beforeInsertsOfPerson.exists(_ == s1))
+    assert(transformedStudents.exists(_ == s1))
     assert(beforeInsertsOfKeyedEntity.exists(_ == s1))
     assert(!beforeInsertsOfProfessor.exists(_ == s1))
     assert(!afterInsertsOfProfessor.exists(_ == s1))
@@ -1536,12 +1548,8 @@ abstract class SchoolDbTestRun extends SchoolDbTestBase {
 
   }
 
-  ignore("VeryVeryNestedExists"){
+  test("VeryVeryNestedExists"){
     val testInstance = sharedTestInstance; import testInstance._
-    // XXX This doesn't work s.addressId in s.addressId === a2.id is created
-    // as a direct ieldSelectElement, not ExportedSelectElement (however note that
-    // s.addressId in where(s.addressId in ... is created correctly (and then correctly
-    // resolved as an outer reference)
     val qStudents = from(students) ((s) => select(s))
     val qStudentsFromStudents = from(qStudents) ((s) => select(s))
     val studentsWithAnAddress =
@@ -1563,7 +1571,31 @@ abstract class SchoolDbTestRun extends SchoolDbTestBase {
     passed('testVeryVeryNestedExists)
 
   }
+  
+  test("selectFromExists"){
+    val testInstance = sharedTestInstance; import testInstance._
+    val qStudents = from(students) ((s) => select(s))
+    val studentsWithAnAddress =
+      from(qStudents)(s =>
+        where(exists(from(addresses)((a) =>
+          where(s.addressId === a.id) select(a))))
+          select(s)
+      )
+    val qAStudentIfHeHasAnAddress =
+      from(studentsWithAnAddress)(s =>
+        where(s.name === "Xiao")
+        select(s)
+      )
 
+    val res = for (s <- qAStudentIfHeHasAnAddress) yield s.name
+    val expected = List("Xiao")
+
+    assert(expected == res, "expected :\n " + expected + "\ngot : \n " + res)
+
+    passed('selectFromExists)
+
+  }
+  
   test("UpdateSetAll") {
     val testInstance = sharedTestInstance; import testInstance._
     update(students)(s => setAll(s.age := Some(30)))
