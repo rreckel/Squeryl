@@ -65,16 +65,13 @@ abstract class DbTestBase extends FunSuite with ShouldMatchers with BeforeAndAft
 
   override def runTest(
     testName: String,
-    reporter: Reporter,
-    stopper: Stopper,
-    configMap: Map[String, Any],
-    tracker: Tracker): Unit = {
+    args: Args): Status = {
 
     if(!notIgnored || ignoredTests.find(_ == testName).isDefined){
       //reporter(TestIgnored(new Ordinal(0), suiteName, Some(this.getClass.getName),testName))
-      return
+      return FailedStatus
     }
-    super.runTest(testName, reporter, stopper, configMap, tracker)
+    super.runTest(testName, args)
   }
 }
 
