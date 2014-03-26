@@ -31,19 +31,22 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
     'PosoMetaData + "[" + clasz.getSimpleName + "]" + fieldsMetaData.mkString("(",",",")")
 
   def findFieldMetaDataForProperty(name: String) =
-     fieldsMetaData.find(fmd => fmd.nameOfProperty == name)
+     _fieldsMetaData.find(fmd => fmd.nameOfProperty == name)
 
-  val isOptimistic = classOf[Optimistic].isAssignableFrom(clasz)
+  val isOptimistic = viewOrTable.ked.map(_.isOptimistic).getOrElse(false)
   
   val constructor =
     _const.headOption.orElse(org.squeryl.internals.Utils.throwError(clasz.getName +
             " must have a 0 param constructor or a constructor with only primitive types")).get
 
+  def fieldsMetaData =
+    _fieldsMetaData.filter(! _.isTransient)
+    
   /**
    * @arg fieldsMetaData the metadata of the persistent fields of this Poso
    * @arg primaryKey None if this Poso is not a KeyedEntity[], Either[a persistedField, a composite key]  
    */
-  val (fieldsMetaData, primaryKey): (Iterable[FieldMetaData], Option[Either[FieldMetaData,Method]]) = {
+  val (_fieldsMetaData, primaryKey): (Iterable[FieldMetaData], Option[Either[FieldMetaData,Method]]) = {
 
     val isImplicitMode = _isImplicitMode
 
@@ -107,9 +110,12 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
 
       val property = (field, getter, setter, a)
 
-      if(isImplicitMode && _groupOfMembersIsProperty(property)) 
+      if(isImplicitMode && _groupOfMembersIsProperty(property)) {
+        val isOptimisitcCounter =
+          (for(k <- viewOrTable.ked; 
+              counterProp <- k.optimisticCounterPropertyName if counterProp == name) yield true).isDefined
         try {
-          fmds.append(FieldMetaData.factory.build(this, name, property, sampleInstance4OptionTypeDeduction, isOptimistic && name == "occVersionNumber"))
+          fmds.append(FieldMetaData.factory.build(this, name, property, sampleInstance4OptionTypeDeduction, isOptimisitcCounter))
         }
         catch {
           case e:Exception => throw new RuntimeException(
@@ -117,6 +123,7 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
               "error while reflecting on metadata for " + property + 
               " of class " + this.clasz.getCanonicalName), e)
         }
+      }
     }
 
     var k = fmds.find(fmd => fmd.isIdFieldOfKeyedEntity)
@@ -127,22 +134,15 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
       else {
         // verify if we have an 'id' method that is a composite key, in this case we need to construct a
         // FieldMetaData that will become the 'primaryKey' field of this PosoMetaData
-        val isKE = classOf[KeyedEntity[Any]].isAssignableFrom(clasz)
-        val isIKE = classOf[IndirectKeyedEntity[_,_]].isAssignableFrom(clasz)
-        if(isKE || isIKE) {
+        
+        viewOrTable.ked.map { ked =>
 
-          val pkMethod =
-            if(isKE)
-              clasz.getMethod("id")
-            else
-              clasz.getMethod("idField")
+          val pkMethod = clasz.getMethod(ked.idPropertyName)
 
-          assert(pkMethod != null, "method id or idField should exist in class " + clasz.getName)
+          assert(pkMethod != null, "Could not get getter for " + ked.idPropertyName + " in " + clasz.getCanonicalName())
 
-          Some(pkMethod)
+          pkMethod
         }
-        else
-          None
       }
 
     val metaDataForPk: Option[Either[FieldMetaData,Method]] =
@@ -194,7 +194,7 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
     var res = new Array[Object](params.size)
 
     for(i <- 0 to params.length -1) {
-      val v = FieldMetaData.createDefaultValue(c, params(i), None, None)
+      val v = FieldMetaData.createDefaultValue(schema.fieldMapper, c, params(i), None, None)
       res(i) = v
     }
 
@@ -297,7 +297,7 @@ class PosoMetaData[T](val clasz: Class[T], val schema: Schema, val viewOrTable: 
       s.add(a)
 
   private def _includeFieldOrMethodType(c: Class[_]) =
-    FieldMetaData.factory.isSupportedFieldType(c)
+    schema.fieldMapper.isSupported(c)
       //! classOf[Query[_]].isAssignableFrom(c)
 
   private def _fillWithMembers(clasz: Class[_], members: ArrayBuffer[(Member,HashSet[Annotation])]) {

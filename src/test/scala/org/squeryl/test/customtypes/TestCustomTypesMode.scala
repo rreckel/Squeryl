@@ -16,10 +16,13 @@ package org.squeryl.test.customtypes
  * limitations under the License.
  ***************************************************************************** */
 import java.sql.SQLException
-import org.squeryl.customtypes._
 import org.squeryl.{KeyedEntity, Schema}
 import org.squeryl.framework._
+import org.squeryl.customtypes._
 
+import CustomTypesMode._
+
+ 
 abstract class TestCustomTypesMode extends SchemaTester with QueryTester with RunTestsInsideTransaction {
 
   val schema = new HospitalDb
@@ -47,6 +50,7 @@ abstract class TestCustomTypesMode extends SchemaTester with QueryTester with Ru
     validateQuery('simpleSelect, simpleSelect, (p:Patient)=>p.id.value, List(joseCuervo.id.value))
     validateQuery('simpleSelect1, patients.where(_.age > 70), (p:Patient)=>p.id.value, List(joseCuervo.id.value))
     validateQuery('simpleSelect2, patients.where(_.age < 40), (p:Patient)=>p.id.value, List(raoulEspinoza.id.value))
+    validateQuery('simpleSelect3, patients.where(_.age < Some(new Age(40))), (p:Patient)=>p.id.value, List(raoulEspinoza.id.value))
   }
 
   test("OneToMany"){
@@ -74,7 +78,6 @@ class TestData(schema : HospitalDb){
 object HospitalDb extends HospitalDb
 
 class HospitalDb extends Schema {
-  import CustomTypesMode._
   
   val patients = table[Patient]
 
@@ -98,6 +101,8 @@ class Patient(var firstName: FirstName, var age: Option[Age], var weight: Option
 
 class PatientInfo(val info: Info) extends KeyedEntity[IntField] {
 
+  def this() = this(new Info(""))
+  
   val patientId: IntField = null
 
   val id: IntField = null
@@ -146,3 +151,5 @@ class Info(v: String) extends StringField(v) with Domain[String] {
   def validate(s:String) = {}
   def label = "info"
 }
+
+

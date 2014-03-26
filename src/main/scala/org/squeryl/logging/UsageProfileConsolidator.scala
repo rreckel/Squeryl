@@ -17,7 +17,7 @@ package org.squeryl.logging
 
 import org.squeryl.Session
 import org.squeryl.adapters.H2Adapter
-import org.squeryl.PrimitiveTypeMode._
+import org.squeryl.logging.StatsSchemaTypeMode._
 
 
 object UsageProfileConsolidator {
@@ -50,13 +50,14 @@ object UsageProfileConsolidator {
 
           val (invocations, statements) =
             using(srcDb_i) {
-              (StatsSchema.statementInvocations.toSeq, StatsSchema.statements.toSeq)
+              (StatsSchema.statementInvocations.allRows, StatsSchema.statements.allRows)
             }
 
           val stmtsToInsert = statements.filter(stmt => StatsSchema.statements.lookup(stmt.id) == None)
           StatsSchema.statements.insert(stmtsToInsert)
 
           StatsSchema.statementInvocations.insert(invocations)
+
         }
       }
     }

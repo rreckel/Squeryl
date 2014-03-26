@@ -1,7 +1,7 @@
 package org.squeryl.framework
 
-import org.scalatest._
-import org.squeryl.PrimitiveTypeMode.transaction
+import org.scalatest.{ Reporter, Stopper, Tracker }
+import org.squeryl.test.PrimitiveTypeModeForTests._
 import org.squeryl.Session
 import org.scalatest.Args
 

@@ -10,23 +10,26 @@ object SquerylBuild extends Build {
     settings = Project.defaultSettings /* ++ lsSettings */ ++ Seq(
       description := "A Scala ORM and DSL for talking with Databases using minimum verbosity and maximum type safety",
       organization := "org.squeryl",
-      version := "0.9.5-6",
+      version := "0.9.6-RC2",
       javacOptions := Seq("-source", "1.6", "-target", "1.6"),
-      version <<= version { v => //only release *if* -Drelease=true is passed to JVM
-        val release = Option(System.getProperty("release")) == Some("true")
-        if (release)
-          v
-        else {
-          val suffix = Option(System.getProperty("suffix"))
-          var i = v.indexOf('-')
-          if (i < 0) i = v.length
-          v.substring(0, i) + "-" + (suffix getOrElse "SNAPSHOT")
-        }
-      },
+  	  version <<= version { v => //only release *if* -Drelease=true is passed to JVM
+  	  	val release = Option(System.getProperty("release")) == Some("true")
+  	  	if(release)
+  	  		v
+  	  	else {
+  	  		val suffix = Option(System.getProperty("suffix"))
+  	  		val i = (v.indexOf('-'), v.length) match {
+  	  		  case (x, l) if x < 0 => l
+  	  		  case (x, l) if v substring (x+1) matches """\d+""" => l //patch level, not RCx
+  	  		  case (x, _) => x
+  	  		}
+  	  		v.substring(0,i) + "-" + (suffix getOrElse "SNAPSHOT")
+  	  	}
+  	  },
       parallelExecution := false,
       publishMavenStyle := true,
-      scalaVersion := "2.10.0",
-      crossScalaVersions := Seq("2.10.0", "2.9.2", "2.9.1", "2.9.0-1", "2.9.0", "2.8.2", "2.8.1", "2.8.0"),
+      scalaVersion := "2.10.3",
+      crossScalaVersions := Seq("2.10.3", "2.9.2", "2.9.1", "2.9.0-1", "2.9.0"),
       licenses := Seq("Apache 2" -> url("http://www.apache.org/licenses/LICENSE-2.0.txt")),
       homepage := Some(url("http://squeryl.org")),
       pomExtra := (<scm>
@@ -54,7 +57,7 @@ object SquerylBuild extends Build {
       },
       publishArtifact in Test := false,
       pomIncludeRepository := { _ => false },
-      //below is for lsync, run "ls-write-version", commit to github, then run "lsync" 
+      //below is for lsync, run "ls-write-version", commit to github, then run "lsync"
       /*
 			  (LsKeys.tags in LsKeys.lsync) := Seq("sql", "orm", "query", "database", "db", "dsl"),
 			  (LsKeys.docsUrl in LsKeys.lsync) := Some(new URL("http://squeryl.org/api/")),
@@ -71,8 +74,8 @@ object SquerylBuild extends Build {
       libraryDependencies <++= scalaVersion { sv =>
         Seq("org.scala-lang" % "scalap" % sv,
           sv match {
-          	case sv if sv startsWith "2.10.0" =>
-          	    "org.scalatest" % ("scalatest_" + sv) % "1.8" % "test"
+          	case sv if sv startsWith "2.10" =>
+          	    "org.scalatest" %% "scalatest" % "1.9.1" % "test"
           	case sv if sv startsWith "2.9" =>
           		"org.scalatest" % "scalatest_2.9.2" % "1.6.1" % "test"
           	case _ =>

@@ -17,11 +17,14 @@ package org.squeryl.adapters
 
 import org.squeryl.{Session, Table}
 import org.squeryl.dsl.ast._
+import org.squeryl.dsl._
 import java.sql.SQLException
 import collection.Set
 import collection.immutable.List
 import collection.mutable.HashSet
 import org.squeryl.internals.{FieldMetaData, StatementWriter, DatabaseAdapter}
+import org.squeryl.internals.ConstantStatementParam
+import org.squeryl.InternalFieldMapper
 
 
 class OracleAdapter extends DatabaseAdapter {
@@ -98,7 +101,7 @@ class OracleAdapter extends DatabaseAdapter {
     sw.write(colVals.mkString("(",",",")"));
   }
 
-  override def writeConcatFunctionCall(fn: FunctionNode[_], sw: StatementWriter) =
+  override def writeConcatFunctionCall(fn: FunctionNode, sw: StatementWriter) =
     sw.writeNodesWithSeparator(fn.args, " || ", false)
 
   override def writeJoin(queryableExpressionNode: QueryableExpressionNode, sw: StatementWriter) = {
@@ -217,7 +220,7 @@ class OracleAdapter extends DatabaseAdapter {
     sw.write(" REGEXP_LIKE(")
     left.write(sw)
     sw.write(",?)")
-    sw.addParam(pattern)
+    sw.addParam(ConstantStatementParam(InternalFieldMapper.stringTEF.createConstant(pattern)))    
   }
 
   override def fieldAlias(n: QueryableExpressionNode, fse: FieldSelectElement) =
@@ -229,8 +232,8 @@ class OracleAdapter extends DatabaseAdapter {
 
   override def viewAlias(vn: ViewExpressionNode[_]) =
     "t" + vn.uniqueId.get
-    
-  override def writeCastInvocation(e: TypedExpressionNode[_], sw: StatementWriter) = {
+/*    
+  override def writeCastInvocation(e: TypedExpression[_,_], sw: StatementWriter) = {
     sw.write("cast(")
     e.write(sw)
 
@@ -245,7 +248,7 @@ class OracleAdapter extends DatabaseAdapter {
       
     sw.write(")")
   }
-    
+*/    
 }
 
 

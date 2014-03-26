@@ -23,10 +23,8 @@ import java.sql.ResultSet
  * This class can be used for read only tables or (database) views
  * for an updatable view, or table use Table[T] 
  */
-class View[T] private [squeryl](_name: String, private[squeryl] val classOfT: Class[T], schema: Schema, _prefix: Option[String]) extends Queryable[T] {
+class View[T] private [squeryl](_name: String, private[squeryl] val classOfT: Class[T], schema: Schema, _prefix: Option[String], val ked: Option[KeyedEntityDef[T,_]]) extends Queryable[T] {
 
-  def this(n:String)(implicit manifestT: Manifest[T]) =
-    this(n, manifestT.erasure.asInstanceOf[Class[T]], DummySchema, None)
 
 //2.9.x approach for LyfeCycle events :
 //  private [squeryl] var _callbacks: PosoLifecycleEventListener = NoOpPosoLifecycleEventListener
@@ -91,15 +89,15 @@ class View[T] private [squeryl](_name: String, private[squeryl] val classOfT: Cl
     resultSetMapper.map(o, resultSet);
     val t = o.asInstanceOf[T]
     _setPersisted(t)
-    t
+    _callbacks.afterSelect(t.asInstanceOf[AnyRef]).asInstanceOf[T]
   }
 
-  def lookup[K](k: K)(implicit ev: T <:< KeyedEntity[K], dsl: QueryDsl): Option[T] = {
+  def lookup[K](k: K)(implicit ked: KeyedEntityDef[T,K], dsl: QueryDsl): Option[T] = {
     //TODO: find out why scalac won't let dsl be passed to another method
     import dsl._
 
     val q = from(this)(a => dsl.where {
-      FieldReferenceLinker.createEqualityExpressionWithLastAccessedFieldReferenceAndConstant(a.id, k)
+      FieldReferenceLinker.createEqualityExpressionWithLastAccessedFieldReferenceAndConstant(ked.getId(a), k)
     } select(a))
 
     val it = q.iterator
@@ -117,7 +115,11 @@ class View[T] private [squeryl](_name: String, private[squeryl] val classOfT: Cl
   /**
    * Will throw an exception if the given key (k) returns no row.
    */
-  def get[K](k: K)(implicit ev: T <:< KeyedEntity[K], dsl: QueryDsl): T = 
-     lookup(k).getOrElse(Utils.throwError("Found no row with key '"+ k + "' in " + name + "."))
+  def get[K](k: K)(implicit ked: KeyedEntityDef[T,K], dsl: QueryDsl): T = 
+     lookup(k).getOrElse(throw new NoSuchElementException("Found no row with key '"+ k + "' in " + name + "."))
   
+  def allRows(implicit dsl: QueryDsl): Iterable[T] = {
+    import dsl._
+    dsl.queryToIterable(from(this)(a=> select(a)))
+  }
 }

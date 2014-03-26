@@ -1,8 +1,8 @@
 package org.squeryl.logging
 
-import org.squeryl.Session
+import org.squeryl.{AbstractSession, Session}
 import org.squeryl.adapters.H2Adapter
-import org.squeryl.PrimitiveTypeMode._
+import org.squeryl.InternalFieldMapper._
 
 object LocalH2SinkStatisticsListener {
 
@@ -35,7 +35,7 @@ object LocalH2SinkStatisticsListener {
   }
 }
 
-class LocalH2SinkStatisticsListener(val h2Session: Session) extends StatisticsListener {
+class LocalH2SinkStatisticsListener(val h2Session: AbstractSession) extends StatisticsListener {
 
   private var _closed = false
 
@@ -61,7 +61,7 @@ class LocalH2SinkStatisticsListener(val h2Session: Session) extends StatisticsLi
       _queue.put(op _)
     }
     else
-      org.squeryl.internals.Utils.throwError('LocalH2SinkStatisticsListener + " has been shutdown.")
+      throw new IllegalStateException('LocalH2SinkStatisticsListener + " has been shutdown.")
 
   def generateStatSummary(staticHtmlFile: java.io.File, n: Int) = _pushOp {
     BarChartRenderer.generateStatSummary(staticHtmlFile, n)

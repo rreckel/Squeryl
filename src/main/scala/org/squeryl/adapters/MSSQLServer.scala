@@ -65,7 +65,7 @@ class MSSQLServer extends DatabaseAdapter {
       sw.pushPendingNextLine
     }
   
-  override def writeConcatFunctionCall(fn: FunctionNode[_], sw: StatementWriter) =
+  override def writeConcatFunctionCall(fn: FunctionNode, sw: StatementWriter) =
     sw.writeNodesWithSeparator(fn.args, " + ", false)
 
   override def writeConcatOperator(left: ExpressionNode, right: ExpressionNode, sw: StatementWriter) = {
@@ -137,11 +137,9 @@ class MSSQLServer extends DatabaseAdapter {
       val beginOffset = page._1
       val pageSize = page._2
 
-      sw.write("With ___z____ as (")
       sw.writeIndented {
         super.writeQuery(qen, sw, false, Some(" TOP " + (beginOffset + pageSize) + " "))
       }
-      sw.write(")")
     }
   
   private def _stripPrefix(selectE: String):String = {

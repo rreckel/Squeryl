@@ -25,15 +25,16 @@ import java.util.UUID
 import collection.mutable.ArrayBuffer
 import javax.swing.UIDefaults.LazyValue
 
-private [squeryl] object DummySchema extends Schema
+//private [squeryl] object DummySchema extends Schema
 
-class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _prefix: Option[String]) extends View[T](n, c, schema, _prefix) {
-
-  def this(n:String)(implicit manifestT: Manifest[T]) =
-    this(n, manifestT.erasure.asInstanceOf[Class[T]], DummySchema, None)  
+class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _prefix: Option[String], ked: Option[KeyedEntityDef[T,_]]) extends View[T](n, c, schema, _prefix, ked) {
 
   private def _dbAdapter = Session.currentSession.databaseAdapter
 
+  /**
+   * @throws SquerylSQLException When a database error occurs or the insert
+   * does not result in 1 row
+   */
   def insert(t: T): T = StackMarker.lastSquerylStackFrame {
 
     val o = _callbacks.beforeInsert(t.asInstanceOf[AnyRef])
@@ -56,7 +57,7 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
       val cnt = _dbAdapter.executeUpdateForInsert(sess, sw, st)
 
       if(cnt != 1)
-        org.squeryl.internals.Utils.throwError("failed to insert")
+        throw SquerylSQLException("failed to insert.  Expected 1 row, got " + cnt)
 
       posoMetaData.primaryKey match {
         case Some(Left(pk:FieldMetaData)) => if(pk.isAutoIncremented) {
@@ -86,7 +87,7 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
     r
   }
 
-  def insert(t: Query[T]) = org.squeryl.internals.Utils.throwError("not implemented")
+//  def insert(t: Query[T]) = org.squeryl.internals.Utils.throwError("not implemented")
 
   def insert(e: Iterable[T]):Unit =
     _batchedUpdateOrInsert(e, t => posoMetaData.fieldsMetaData.filter(fmd => !fmd.isAutoIncremented && fmd.isInsertable), true, false)
@@ -124,7 +125,7 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
       val st = sess.connection.prepareStatement(sw.statement)
 
       try {
-        dba.fillParamsInto(dba.convertParamsForJdbc(sw.paramsZ), st)
+        dba.fillParamsInto(sw.params, st)
         st.addBatch
 
         var updateCount = 1
@@ -141,7 +142,7 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
 
           var idx = 1
           fmds.foreach(fmd => {
-            st.setObject(idx, dba.convertToJdbcValue(fmd.get(eN)))
+            dba.setParamInto(st, FieldStatementParam(eN, fmd), idx)            
             idx += 1
           })
           st.addBatch
@@ -163,8 +164,9 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
       }
 
       for(a <- forAfterUpdateOrInsert)
-        if(isInsert)
-          _callbacks.afterInsert(a)
+        if(isInsert) {
+          _setPersisted(_callbacks.afterInsert(a).asInstanceOf[T])
+        }
         else
           _callbacks.afterUpdate(a)
 
@@ -173,20 +175,26 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
 
   /**
    * Updates without any Optimistic Concurrency Control check 
+   * @throws SquerylSQLException When a database error occurs or the update
+   * does not result in 1 row
    */
-  def forceUpdate(o: T)(implicit ev: T <:< KeyedEntity[_]) =
-    _update(o, false)
+  def forceUpdate(o: T)(implicit ked: KeyedEntityDef[T,_]) =
+    _update(o, false, ked)
   
-  def update(o: T)(implicit ev: T <:< KeyedEntity[_]):Unit =
-    _update(o, true)
+  /**
+   * @throws SquerylSQLException When a database error occurs or the update
+   * does not result in 1 row
+   */
+  def update(o: T)(implicit ked: KeyedEntityDef[T,_]):Unit =
+    _update(o, true, ked)
 
-  def update(o: Iterable[T])(implicit ev: T <:< KeyedEntity[_]):Unit =
-    _update(o, true)
+  def update(o: Iterable[T])(implicit ked: KeyedEntityDef[T,_]):Unit =
+    _update(o, ked.isOptimistic)
 
-  def forceUpdate(o: Iterable[T])(implicit ev: T <:< KeyedEntity[_]):Unit =
-    _update(o, false)
+  def forceUpdate(o: Iterable[T])(implicit ked: KeyedEntityDef[T,_]):Unit =
+    _update(o, ked.isOptimistic)
 
-  private def _update(o: T, checkOCC: Boolean) = {
+  private def _update(o: T, checkOCC: Boolean, ked: KeyedEntityDef[T,_]) = {
 
     val dba = Session.currentSession.databaseAdapter
     val sw = new StatementWriter(dba)
@@ -197,13 +205,13 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
 
     if(cnt != 1) {
       if(checkOCC && posoMetaData.isOptimistic) {
-        val version = posoMetaData.optimisticCounter.get.get(o.asInstanceOf[AnyRef])
+        val version = posoMetaData.optimisticCounter.get.getNativeJdbcValue(o.asInstanceOf[AnyRef])
         throw new StaleUpdateException(
-           "Object "+prefixedName + "(id=" + o.asInstanceOf[KeyedEntity[_]].id + ", occVersionNumber=" + version +
+           "Object "+prefixedName + "(id=" + ked.getId(o) + ", occVersionNumber=" + version +
            ") has become stale, it cannot be updated under optimistic concurrency control")
       }
       else
-        org.squeryl.internals.Utils.throwError("failed to update")
+        throw SquerylSQLException("failed to update.  Expected 1 row, got " + cnt)
     }
 
     _callbacks.afterUpdate(o0.asInstanceOf[AnyRef])
@@ -223,7 +231,7 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
 
             fields = Some(ck._fields.toList)
 
-            new EqualityExpression(new InputOnlyConstantExpressionNode(1), new InputOnlyConstantExpressionNode(1))
+            new EqualityExpression(InternalFieldMapper.intTEF.createConstant(1), InternalFieldMapper.intTEF.createConstant(1))
           })
 
           fields getOrElse (internals.Utils.throwError("No PK fields found"))
@@ -283,10 +291,10 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
   def deleteWhere(whereClause: T => LogicalBoolean)(implicit dsl: QueryDsl): Int =
     delete(dsl.from(this)(t => dsl.where(whereClause(t)).select(t)))      
 
-  def delete[K](k: K)(implicit ev: T <:< KeyedEntity[K], dsl: QueryDsl): Boolean  = {
+  def delete[K](k: K)(implicit ked: KeyedEntityDef[T,K], dsl: QueryDsl): Boolean  = {
     import dsl._
     val q = from(this)(a => dsl.where {
-      FieldReferenceLinker.createEqualityExpressionWithLastAccessedFieldReferenceAndConstant(a.id, k)
+      FieldReferenceLinker.createEqualityExpressionWithLastAccessedFieldReferenceAndConstant(ked.getId(a), k)
     } select(a))
 
     lazy val z = q.headOption
@@ -301,12 +309,17 @@ class Table[T] private [squeryl] (n: String, c: Class[T], val schema: Schema, _p
       z.map(x => _callbacks.afterDelete(x.asInstanceOf[AnyRef]))
     }
 
-    assert(deleteCount <= 1, "Query :\n" + q.dumpAst + "\nshould have deleted at most 1 row but has deleted " + deleteCount)
-    deleteCount == 1
+    if(Session.currentSessionOption map { ses => ses.databaseAdapter.verifyDeleteByPK } getOrElse true)
+      assert(deleteCount <= 1, "Query :\n" + q.dumpAst + "\nshould have deleted at most 1 row but has deleted " + deleteCount)
+    deleteCount > 0
   }
 
-  def insertOrUpdate(o: T)(implicit ev: T <:< KeyedEntity[_]): T = {
-    if(o.isPersisted)
+  /**
+   * @throws SquerylSQLException When a database error occurs or the operation
+   * does not result in 1 row
+   */
+  def insertOrUpdate(o: T)(implicit ked: KeyedEntityDef[T,_]): T = {
+    if(ked.isPersisted(o))
       update(o)
     else
       insert(o)

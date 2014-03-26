@@ -19,7 +19,9 @@ import dsl.ast.{ExpressionNode}
 import internals.ResultSetMapper
 import java.sql.ResultSet
 
-trait Query[R] extends Iterable[R] with Queryable[R] {
+trait Query[R] extends Queryable[R] {
+  
+  def iterator: Iterator[R]
 
   protected[squeryl] def invokeYield(rsm: ResultSetMapper, resultSet: ResultSet): R
 
@@ -32,7 +34,7 @@ trait Query[R] extends Iterable[R] with Queryable[R] {
 
   def ast: ExpressionNode
 
-  private[squeryl] def copy(asRoot:Boolean): Query[R]
+  private [squeryl] def copy(asRoot:Boolean): Query[R]
 
   /**
    * Returns the first row of the query. An exception will be thrown
@@ -46,8 +48,24 @@ trait Query[R] extends Iterable[R] with Queryable[R] {
     r
   }
 
+  /**
+   * Returns Some(singleRow), None if there are none, throws an exception 
+   * if the query returns more than one row.
+   */
+  def singleOption: Option[R] = {
+    val i = iterator
+    val res = 
+      if(i.hasNext)
+        Some(i.next)
+      else 
+        None
 
-  override def headOption = {
+    if(i.hasNext)
+      org.squeryl.internals.Utils.throwError("singleOption called on query returning more than one row : \n" + statement)
+    res
+  }
+
+  def headOption = {
     val i = iterator
     if(i.hasNext)
       Some(i.next)
@@ -57,9 +75,9 @@ trait Query[R] extends Iterable[R] with Queryable[R] {
 
   def distinct: Query[R]
 
-  def union(q: Query[R]): Query[R] = org.squeryl.internals.Utils.throwError("not implemented")
+  def union(q: Query[R]): Query[R] = throw new UnsupportedOperationException("not implemented")
 
-  def minus(q: Query[R]): Query[R] = org.squeryl.internals.Utils.throwError("not implemented")
+  def minus(q: Query[R]): Query[R] = throw new UnsupportedOperationException("not implemented")
 
   def forUpdate: Query[R]
 

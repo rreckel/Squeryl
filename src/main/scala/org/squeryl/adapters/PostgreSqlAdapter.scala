@@ -18,10 +18,17 @@ package org.squeryl.adapters
 import org.squeryl.dsl.ast.FunctionNode
 import java.sql.{ResultSet, SQLException}
 import java.util.UUID
-import org.squeryl.internals.{StatementWriter, DatabaseAdapter, FieldMetaData}
+import org.squeryl.internals.{StatementWriter, DatabaseAdapter, FieldMetaData, FieldStatementParam}
 import org.squeryl.{Session, Table}
 
 class PostgreSqlAdapter extends DatabaseAdapter {
+
+  /**
+   * NB: You can override `usePostgresSequenceNamingScheme` to return true in a
+   * child class to change the sequence naming behavior to align with the
+   * default postgresql scheme.
+   */
+  def usePostgresSequenceNamingScheme: Boolean = false
 
   override def intTypeDeclaration = "integer"
   override def stringTypeDeclaration = "varchar"
@@ -33,7 +40,13 @@ class PostgreSqlAdapter extends DatabaseAdapter {
   override def bigDecimalTypeDeclaration(precision:Int, scale:Int) = "numeric(" + precision + "," + scale + ")"
   override def binaryTypeDeclaration = "bytea"
   override def uuidTypeDeclaration = "uuid"
-
+    
+    
+  override def jdbcIntArrayCreationType = "int4"
+  override def jdbcLongArrayCreationType = "int8"
+  override def jdbcDoubleArrayCreationType = "float8"
+  override def jdbcStringArrayCreationType = "varchar"
+    
   override def foreignKeyConstraintName(foreignKeyTable: Table[_], idWithinSchema: Int) =
     foreignKeyTable.name + "FK" + idWithinSchema
 
@@ -55,12 +68,28 @@ class PostgreSqlAdapter extends DatabaseAdapter {
   }                                               
 
   def sequenceName(t: Table[_]) =
-    t.prefixedPrefixedName("seq_")
+    if (usePostgresSequenceNamingScheme) {
+      // This is compatible with the default postgresql sequence naming scheme.
+      val autoIncPK = t.posoMetaData.fieldsMetaData.find(fmd => fmd.isAutoIncremented)
+      t.name + "_" + autoIncPK.get.nameOfProperty + "_seq"
+    } else {
+      // Use the legacy Squeryl sequence naming scheme.
+      t.prefixedPrefixedName("seq_")
+    }
 
-  override def writeConcatFunctionCall(fn: FunctionNode[_], sw: StatementWriter) =
+  override def createSequenceName(fmd: FieldMetaData) =
+    if (usePostgresSequenceNamingScheme) {
+      // This is compatible with the default postgresql sequence naming scheme.
+      fmd.parentMetaData.viewOrTable.name + "_" + fmd.columnName + "_seq"
+    } else {
+      // Use the legacy Squeryl sequence naming scheme.
+      super.createSequenceName(fmd)
+    }
+
+  override def writeConcatFunctionCall(fn: FunctionNode, sw: StatementWriter) =
     sw.writeNodesWithSeparator(fn.args, " || ", false)
   
-  override def writeInsert[T](o: T, t: Table[T], sw: StatementWriter):Unit = {
+  override def writeInsert[T](o: T, t: Table[T], sw: StatementWriter): Unit = {
 
     val o_ = o.asInstanceOf[AnyRef]
 
@@ -83,6 +112,19 @@ class PostgreSqlAdapter extends DatabaseAdapter {
     sw.write(") values ");
     sw.write(colVals.mkString("(",",",")"));
   }
+
+  /**
+   * In the case custom DB type used it is benefitial to explicitly cast value to its type, because it invokes
+   * proper cast function. For example, it is possible to insert Scala String into a DB ENUM using dbType.
+   */
+  override protected def writeValue(o: AnyRef, fmd: FieldMetaData, sw: StatementWriter): String =
+    fmd.explicitDbTypeDeclaration match {
+      case Some(declaration) if fmd.explicitDbTypeCast => {
+        val original = super.writeValue(o, fmd, sw)
+        original + "::" + declaration
+      }
+      case _ => super.writeValue(o, fmd, sw)
+    }
 
   override def supportsAutoIncrementInColumnDeclaration: Boolean = false
 
