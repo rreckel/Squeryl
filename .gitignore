@@ -19,3 +19,6 @@ profileOfH2Tests.html
 *.trace.db
 .sbtconfig
 project/pgp.sbt
+atlassian-ide-plugin.xml
+squeryl.iml
+src/main/scala/org/squeryl/KeyedEntity.scala.orig
