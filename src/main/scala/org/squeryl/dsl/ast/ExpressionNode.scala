@@ -219,7 +219,7 @@ trait BaseColumnAttributeAssignment {
     findAttribute[A](m) != None
 
   def findAttribute[A <: ColumnAttribute](implicit m: Manifest[A]) =
-    columnAttributes.find(ca => m.erasure.isAssignableFrom(ca.getClass))  
+    columnAttributes.find(ca => m.erasure.isAssignableFrom(ca.getClass))
 }
 
 class ColumnGroupAttributeAssignment(cols: Seq[FieldMetaData], columnAttributes_ : Seq[ColumnAttribute])

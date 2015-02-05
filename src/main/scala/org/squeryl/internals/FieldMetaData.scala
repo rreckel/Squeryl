@@ -493,6 +493,14 @@ object FieldMetaData {
         else
           typeOfFieldOrTypeOfOption
 
+      if(typeOfFieldOrTypeOfOption == None.getClass) {
+        Utils.throwError(
+          "class " + parentMetaData.clasz.getCanonicalName +" used in table " +
+            parentMetaData.viewOrTable.name +
+            ", needs a zero arg constructor with sample values for Option[] field " +
+            name
+        )
+      }
 
       new FieldMetaData(
         parentMetaData,
@@ -615,7 +623,13 @@ object FieldMetaData {
     val _dateM =    (rs:ResultSet,i:Int) => _handleNull(rs, rs.getDate(i))
     val _longM =    (rs:ResultSet,i:Int) => _handleNull(rs, rs.getLong(i))
     val _floatM =   (rs:ResultSet,i:Int) => _handleNull(rs, rs.getFloat(i))
-    val _bigDecM =  (rs:ResultSet,i:Int) => _handleNull(rs, new scala.math.BigDecimal(rs.getBigDecimal(i)))
+    val _bigDecM =  (rs:ResultSet,i:Int) => {
+      val bd = rs.getBigDecimal(i)
+      if (rs.wasNull)
+        null
+      else
+        scala.BigDecimal(bd)
+    }
     val _timestampM =    (rs:ResultSet,i:Int) => _handleNull(rs, rs.getTimestamp(i))
     val _binaryM =  (rs:ResultSet,i:Int) => _handleNull(rs, rs.getBytes(i))
     val _uuidM = (rs:ResultSet, i:Int) => {
@@ -670,7 +684,7 @@ object FieldMetaData {
         	printer.printSymbol(c)
       }
       val fullSig = baos.toString
-      val matcher = """\s%s : scala.Option\[scala\.(\w+)\]?""".format(member.getName).r.pattern.matcher(fullSig)
+      val matcher = """\s%s\s*:\s*scala.Option\[scala\.(\w+)\]?""".format(member.getName).r.pattern.matcher(fullSig)
       if (matcher.find) {
         matcher.group(1) match {
           case "Int" => Some(classOf[scala.Int])

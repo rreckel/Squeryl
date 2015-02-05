@@ -1,5 +1,6 @@
 import sbt._
 import Keys._
+import Append._
 //import ls.Plugin._
 
 object SquerylBuild extends Build {
@@ -10,7 +11,7 @@ object SquerylBuild extends Build {
     settings = Project.defaultSettings /* ++ lsSettings */ ++ Seq(
       description := "A Scala ORM and DSL for talking with Databases using minimum verbosity and maximum type safety",
       organization := "org.squeryl",
-      version := "0.9.5-6",
+      version := "0.9.5-7",
       javacOptions := Seq("-source", "1.6", "-target", "1.6"),
       version <<= version { v => //only release *if* -Drelease=true is passed to JVM
         val release = Option(System.getProperty("release")) == Some("true")
@@ -25,8 +26,27 @@ object SquerylBuild extends Build {
       },
       parallelExecution := false,
       publishMavenStyle := true,
-      scalaVersion := "2.10.0",
-      crossScalaVersions := Seq("2.10.0", "2.9.2", "2.9.1", "2.9.0-1", "2.9.0", "2.8.2", "2.8.1", "2.8.0"),
+      scalaVersion := "2.11.1",
+      crossScalaVersions := Seq("2.11.1", "2.10.4", "2.9.3", "2.9.2", "2.9.1", "2.9.0-1", "2.9.0"),
+      scalacOptions <++= scalaVersion map { sv =>
+        Seq("-unchecked", "-deprecation") ++ (
+          if(sv.startsWith("2.11"))
+            Seq("-feature",
+            "-language:implicitConversions",
+            "-language:postfixOps",
+            "-language:reflectiveCalls",
+            "-language:existentials")
+          else
+            Nil
+          )
+      },
+      unmanagedSourceDirectories in Compile := {
+        val existing = (unmanagedSourceDirectories in Compile).value
+        (if(scalaVersion.value.startsWith("2.9"))
+          baseDirectory.value / "src" / "main" / "scala-2.9"
+        else
+          baseDirectory.value / "src" / "main" / "scala-2.10+") +: existing
+      },
       licenses := Seq("Apache 2" -> url("http://www.apache.org/licenses/LICENSE-2.0.txt")),
       homepage := Some(url("http://squeryl.org")),
       pomExtra := (<scm>
@@ -67,16 +87,18 @@ object SquerylBuild extends Build {
         "postgresql" % "postgresql" % "8.4-701.jdbc4" % "provided",
         "net.sourceforge.jtds" % "jtds" % "1.2.4" % "provided",
         "org.apache.derby" % "derby" % "10.7.1.1" % "provided",
-        "junit" % "junit" % "4.8.2" % "provided"),
+        "junit" % "junit" % "4.8.2" % "provided"
+      ),
       libraryDependencies <++= scalaVersion { sv =>
         Seq("org.scala-lang" % "scalap" % sv,
           sv match {
-          	case sv if sv startsWith "2.10.0" =>
-          	    "org.scalatest" % ("scalatest_" + sv) % "1.8" % "test"
-          	case sv if sv startsWith "2.9" =>
-          		"org.scalatest" % "scalatest_2.9.2" % "1.6.1" % "test"
-          	case _ =>
-          		"org.scalatest" % "scalatest_2.8.2" % "1.5.1" % "test"
-        })
+            case sv if sv startsWith "2.11" =>
+              "org.scalatest" %% "scalatest" % "2.1.3" % "test"
+            case sv if sv startsWith "2.10" =>
+              "org.scalatest" %% "scalatest" % "2.1.3" % "test"
+            case _ =>
+              "org.scalatest" % "scalatest_2.9.2" % "2.0.M6-SNAP3" % "test"
+          }
+        )
       }))
 }

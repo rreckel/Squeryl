@@ -1,77 +1,69 @@
 package org.squeryl.framework
 
-import org.scalatest.matchers.ShouldMatchers
 import org.squeryl.{SessionFactory, Session, Schema}
-
 import org.squeryl.PrimitiveTypeMode._
 import org.scalatest._
 import org.scalatest.events.{TestIgnored, Ordinal}
+import org.scalatest.matchers.ShouldMatchers
 
-abstract class SchemaTester extends DbTestBase{
+abstract class SchemaTester extends DbTestBase {
+  self: DBConnector =>
 
   def schema : Schema
 
   def prePopulate() = {}
 
   override def beforeAll(){
-    super.beforeAll
-    if(notIgnored){
-      transaction{
-         schema.drop
-         schema.create
+
+    super.beforeAll()
+
+    sessionCreator().foreach { _ =>
+      transaction {
+        schema.drop
+        schema.create
         try{
           prePopulate
         }catch{
           case e : Exception =>
             println(e.getMessage)
-            println(e.getStackTraceString)
+            println(e.getStackTrace)
         }
       }
     }
   }
 
   override def afterAll(){
-    super.afterAll
-    if(notIgnored){
-      transaction{
-         schema.drop
+    super.afterAll()
+
+    sessionCreator().foreach { _ =>
+      transaction {
+        schema.drop
       }
     }
   }
 }
 
-abstract class DbTestBase extends FunSuite with ShouldMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
+abstract class DbTestBase extends FunSuite with BeforeAndAfterAll with BeforeAndAfterEach with ShouldMatchers {
+  self: DBConnector =>
 
-  def connectToDb : Option[() => Session]
+  def isIgnored(testName: String) =
+    sessionCreator().isEmpty || ignoredTests.exists(_ == testName)
 
-  var notIgnored = true
-
-  val ignoredTests : List[String] = Nil
+  def ignoredTests : List[String] = Nil
 
   override def beforeAll(){
-    super.beforeAll
-    SessionFactory.concreteFactory = connectWrapper()
-  }
-
-  private def connectWrapper() : Option[() => Session] = {
-    val connector = connectToDb
-    if(connector.isEmpty){
-      notIgnored = false
-      None
-    }else{
-      Some(connector.get)
+    val c = sessionCreator()
+    if(c.isDefined) {
+      SessionFactory.concreteFactory = c
     }
   }
 
-  override def runTest(
-    testName: String,
-    args: Args): Status = {
-
-    if(!notIgnored || ignoredTests.find(_ == testName).isDefined){
-      //reporter(TestIgnored(new Ordinal(0), suiteName, Some(this.getClass.getName),testName))
-      return FailedStatus
-    }
-    super.runTest(testName, args)
+  override protected def runTest(testName: String,args: org.scalatest.Args): org.scalatest.Status = {
+    if(isIgnored(testName))
+      org.scalatest.SucceededStatus
+    else
+      super.runTest(testName, args)
   }
+
 }
 

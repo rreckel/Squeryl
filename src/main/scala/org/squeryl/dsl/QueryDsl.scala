@@ -33,7 +33,6 @@ trait QueryDsl
   with JoinSignatures
   with FromSignatures {
   outerQueryDsl =>
-  
   def using[A](session: Session)(a: =>A): A =
     _using(session, a _)
 
@@ -62,8 +61,9 @@ trait QueryDsl
   def inTransaction[A](sf: SessionFactory)(a: =>A) =
     if(! Session.hasCurrentSession)
       _executeTransactionWithin(sf.newSession, a _)
-    else
-      _executeTransactionWithin(Session.currentSession, a _)
+    else {
+      a
+    }
 
    def transaction[A](s: Session)(a: =>A) = 
      _executeTransactionWithin(s, a _)
@@ -275,6 +275,7 @@ trait QueryDsl
 
   class ManyToManyRelationImpl[L <: KeyedEntity[_], R <: KeyedEntity[_], A <: KeyedEntity[_]](val leftTable: Table[L], val rightTable: Table[R], aClass: Class[A], f: (L,R,A)=>Pair[EqualityExpression,EqualityExpression], schema: Schema, nameOverride: Option[String])
     extends Table[A](nameOverride.getOrElse(schema.tableNameFromClass(aClass)), aClass, schema, None) with ManyToManyRelation[L,R,A] {
+
     thisTableOfA =>    
 
     def thisTable = thisTableOfA
@@ -283,7 +284,7 @@ trait QueryDsl
     
     private val (_leftEqualityExpr, _rightEqualityExpr) = {
 
-      var e2: Option[Pair[EqualityExpression,EqualityExpression]] = None
+      var e2: Option[Tuple2[EqualityExpression,EqualityExpression]] = None
 
       from(leftTable, rightTable, thisTableOfA)((l,r,a) => {
         e2 = Some(f(l,r,a))
