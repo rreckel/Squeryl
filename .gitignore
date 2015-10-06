@@ -20,3 +20,4 @@ profileOfH2Tests.html
 *.trace.db
 .sbtconfig
 tags
+!.travis.yml
