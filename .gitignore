@@ -21,3 +21,4 @@ profileOfH2Tests.html
 .sbtconfig
 tags
 !.travis.yml
+local.*
