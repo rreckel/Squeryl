@@ -1,6 +1,7 @@
 language: scala
 scala:
 - 2.11.6
+- 2.10.5
 jdk:
 - oraclejdk7
 before_install:
@@ -8,11 +9,10 @@ before_install:
 - openssl aes-256-cbc -pass pass:$encryption_password -in pubring.gpg.enc -out local.pubring.gpg -d
 - openssl aes-256-cbc -pass pass:$encryption_password -in credentials.sbt.enc -out local.credentials.sbt -d
 script:
-- sbt ++$TRAVIS_SCALA_VERSION compile
-- sbt ++$TRAVIS_SCALA_VERSION test:compile
 - sbt ++$TRAVIS_SCALA_VERSION test
 after_success:
-  - "[[ $TRAVIS_BRANCH == \"travis\" ]] && sbt publishSigned"
+  - "[[ $TRAVIS_BRANCH == \"travis\" ]] && sbt clean publishSigned"
+  - "[[ $TRAVIS_TAG ]] && echo "tagged"
 env:
   global:
-    secure: UQglqm+szclBvEDQGxuTEjPHLClRVlHIuLaujQgBQ5gv3eyBsR5tUphox5WT6HjAkTijzsYNdE0z4LBFX7IE9nVKyqoJpr+5Hw0/tgPQ8608VGPDa+H/DtMXI11UNH5Czc9OYwWTTKETmIQhMnsRdH2D0CnYePZbdOFL2pXgFmz9siUIAe9QHbbah4x6rybF+s1AEcf4Yiw6Tzr3KbhIItsdit/O7G0Vi2d0dfVZwp2L9eIFsJPJdcTlDquBaGfeAKxCnQkNlnmgdBYH85T8/tnQAyfZpqoLiHv/iXkUuolhL7RtC0BpUXGzzq9N66ju4fViQ0/MDh4P/2v4Aoc4pY0UgqU/s5LvLb/kBgenjeW915gm2b651OjYfOAJ+JohMJFC5JHzFbUzXnJ6XIY14i+9ech3qHqT942Eyj1WuRbut3Id1kacC9eVvmYu/rJaxZLfy2R99DOhKehrdb8uIXN3V/JcgsgLaSOLHWwoZd3VDelrk3m1HydXzxhS+YDwp44RWqNy8wdLqDKOoggZ1LwycHmVJB8mKvcEOnnrG4IU2mTQZXqpFnqNJLox7n0qwgR3vYZTa3FVCk6hk1TH6mRAUYB17Zcb4r6bLyd82rhIHmpF9pAIsk/s574uEQMCkYCmGD7dHeNhPNTdZeJMevPbKSFwtaYXMaDnav6O4TQ=
+    - secure: UQglqm+szclBvEDQGxuTEjPHLClRVlHIuLaujQgBQ5gv3eyBsR5tUphox5WT6HjAkTijzsYNdE0z4LBFX7IE9nVKyqoJpr+5Hw0/tgPQ8608VGPDa+H/DtMXI11UNH5Czc9OYwWTTKETmIQhMnsRdH2D0CnYePZbdOFL2pXgFmz9siUIAe9QHbbah4x6rybF+s1AEcf4Yiw6Tzr3KbhIItsdit/O7G0Vi2d0dfVZwp2L9eIFsJPJdcTlDquBaGfeAKxCnQkNlnmgdBYH85T8/tnQAyfZpqoLiHv/iXkUuolhL7RtC0BpUXGzzq9N66ju4fViQ0/MDh4P/2v4Aoc4pY0UgqU/s5LvLb/kBgenjeW915gm2b651OjYfOAJ+JohMJFC5JHzFbUzXnJ6XIY14i+9ech3qHqT942Eyj1WuRbut3Id1kacC9eVvmYu/rJaxZLfy2R99DOhKehrdb8uIXN3V/JcgsgLaSOLHWwoZd3VDelrk3m1HydXzxhS+YDwp44RWqNy8wdLqDKOoggZ1LwycHmVJB8mKvcEOnnrG4IU2mTQZXqpFnqNJLox7n0qwgR3vYZTa3FVCk6hk1TH6mRAUYB17Zcb4r6bLyd82rhIHmpF9pAIsk/s574uEQMCkYCmGD7dHeNhPNTdZeJMevPbKSFwtaYXMaDnav6O4TQ=
